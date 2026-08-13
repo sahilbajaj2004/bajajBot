@@ -54,6 +54,13 @@ bajajbot sessions                # select a saved chat
 bajajbot chat --resume <id>      # resume a chat directly
 ```
 
+Inside chat, these slash commands are available:
+
+```text
+/model <id>    Switch the active model for this chat session
+/help          Show available slash commands
+```
+
 ## Architecture
 
 ```text
