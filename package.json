@@ -1,0 +1,30 @@
+{
+  "name": "bajajbot",
+  "version": "0.1.1",
+  "description": "Terminal AI chat client",
+  "author": "Sahil Bajaj <Sahilbajaj2004@gmail.com>",
+  "type": "module",
+  "bin": {
+    "bajajbot": "./dist/bin/bajajbot.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx bin/bajajbot.ts",
+    "test": "npm run build && node --test dist/test/**/*.test.js",
+    "stream": "tsx scripts/stream.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "ink": "^6.3.0",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
