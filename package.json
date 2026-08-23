@@ -1,6 +1,6 @@
 {
   "name": "bajajbot",
-  "version": "0.3.0",
+  "version": "1.0.3",
   "description": "Terminal AI chat client",
   "author": "Sahil Bajaj <Sahilbajaj2004@gmail.com>",
   "type": "module",

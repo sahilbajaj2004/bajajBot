@@ -15,6 +15,7 @@ import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
 import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
+import { sessionTitle, setTerminalTitle } from "./title.js";
 import { theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
@@ -124,6 +125,11 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     const id = setInterval(() => setBlink((value) => value + 1), 120);
     return () => clearInterval(id);
   }, [busy]);
+
+  const firstPrompt = completed.find((message) => message.role === "user")?.content;
+  useEffect(() => {
+    setTerminalTitle(sessionTitle(firstPrompt));
+  }, [firstPrompt]);
 
   useInput((character, key) => {
     if (key.ctrl && character?.toLowerCase() === "c") {

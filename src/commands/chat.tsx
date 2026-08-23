@@ -5,10 +5,12 @@ import { initConfig } from "./configCmd.js";
 import { App } from "../ui/App.js";
 import { createMouseStdin } from "../ui/mouse.js";
 import { printGoodbye, type ExitSummary } from "../ui/goodbye.js";
+import { setTerminalTitle } from "../ui/title.js";
 import { createSession } from "../session/history.js";
 import type { Session } from "../session/types.js";
 
 export async function startChat(session?: Session): Promise<void> {
+  setTerminalTitle("BajajBot");
   if (!configExists()) {
     const created = await initConfig();
     if (!created) return;

@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { useEffect, useState } from "react";
 import type { Config } from "../config/types.js";
 import { theme } from "./theme.js";
 
@@ -14,6 +15,11 @@ const FEATURES: Array<[string, string]> = [
 ];
 
 export function Splash({ config, input, cursor, rows, columns }: { config: Config; input: string; cursor: number; rows: number; columns: number }) {
+  const [blink, setBlink] = useState(true);
+  useEffect(() => {
+    const id = setInterval(() => setBlink((value) => !value), 500);
+    return () => clearInterval(id);
+  }, []);
   const wide = columns >= 62;
   const boxWidth = Math.min(64, Math.max(columns - 2, 20));
   const position = Math.min(Math.max(cursor, 0), input.length);
@@ -46,11 +52,18 @@ export function Splash({ config, input, cursor, rows, columns }: { config: Confi
         {input ? (
           <Text>
             {input.slice(0, position)}
-            {position < input.length ? <Text inverse>{input.slice(position, position + 1)}</Text> : <Text inverse> </Text>}
+            {position < input.length ? (
+              <Text inverse={blink}>{input.slice(position, position + 1)}</Text>
+            ) : (
+              <Text inverse={blink}> </Text>
+            )}
             {input.slice(position + 1)}
           </Text>
         ) : (
-          <Text dimColor>Ask anything… "/help"</Text>
+          <Text dimColor>
+            {`Ask anything… "/help"`}
+            {blink ? <Text inverse> </Text> : " "}
+          </Text>
         )}
         <Text>
           <Text color={theme.accent}>● chat</Text>

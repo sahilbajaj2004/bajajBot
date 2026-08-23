@@ -40,7 +40,7 @@ function Field({
   return (
     <Box flexDirection="column" rowGap={0}>
       <Text bold>{`  ${label}`}</Text>
-      <Box alignSelf="flex-start" borderStyle="round" borderColor={theme.accent} paddingX={1}>
+      <Box borderStyle="round" borderColor={theme.accent} paddingX={1}>
         {shown ? (
           <Text>
             {shown}
