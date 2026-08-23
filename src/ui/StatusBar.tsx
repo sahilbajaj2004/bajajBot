@@ -1,7 +1,9 @@
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { theme } from "./theme.js";
 
 export function StatusBar({ model, tokens, streaming }: { model: string; tokens: number | null; streaming: boolean }) {
+  const { stdout } = useStdout();
+  const wide = (stdout.columns ?? 80) >= 70;
   return (
     <Box flexDirection="column">
       <Box borderStyle="single" borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" />
@@ -19,7 +21,7 @@ export function StatusBar({ model, tokens, streaming }: { model: string; tokens:
             </>
           ) : null}
           {tokens !== null ? `${tokens.toLocaleString()} tok · ` : ""}
-          ctrl+c exit
+          {wide ? "ctrl+c exit" : ""}
         </Text>
       </Box>
     </Box>

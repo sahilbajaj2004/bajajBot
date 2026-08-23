@@ -72,8 +72,18 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const bufferRef = useRef("");
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const rows = Math.max(stdout.rows ?? 24, 10);
-  const columns = Math.max(stdout.columns ?? 80, 40);
+  const [size, setSize] = useState({ rows: stdout.rows ?? 24, columns: stdout.columns ?? 80 });
+
+  useEffect(() => {
+    const update = () => setSize({ rows: stdout.rows ?? 24, columns: stdout.columns ?? 80 });
+    stdout.on("resize", update);
+    return () => {
+      stdout.off("resize", update);
+    };
+  }, [stdout]);
+
+  const rows = Math.max(size.rows, 10);
+  const columns = Math.max(size.columns, 40);
 
   const busy = streaming !== null;
   const fresh = completed.length === 0;
@@ -256,7 +266,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
 
   return (
     <Box flexDirection="column">
-      {fresh && !overlay ? <Splash config={config} input={input} /> : null}
+      {fresh && !overlay ? <Splash config={config} input={input} rows={rows} columns={columns} /> : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
