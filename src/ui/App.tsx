@@ -475,8 +475,11 @@ export function App({ config, session: initialSession }: { config: Config; sessi
           {showAuto ? <Autocomplete commands={suggestions} selected={autoSelected} /> : null}
           {error ? <Text color={theme.danger}>✗ {error}</Text> : null}
           {busy ? (
-            <Text color={theme.accent}>
-              {`  ${SPINNER_FRAMES[blink % SPINNER_FRAMES.length]} Thinking…`}
+            <Text>
+              <Text color={theme.accent}>
+                {`  ${SPINNER_FRAMES[blink % SPINNER_FRAMES.length]} Working…`}
+              </Text>
+              <Text dimColor> · esc to interrupt</Text>
             </Text>
           ) : null}
           <InputBox value={input} cursor={cursor} active={!busy} />

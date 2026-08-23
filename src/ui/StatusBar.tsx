@@ -16,7 +16,9 @@ export function StatusBar({ model, tokens, streaming }: { model: string; tokens:
         <Text dimColor>
           {streaming ? (
             <>
-              <Text color="yellow">● streaming… esc stops</Text>
+              <Text color="yellow">● streaming</Text>
+              {" · "}
+              <Text bold>esc interrupt</Text>
               {" · "}
             </>
           ) : null}

@@ -57,7 +57,7 @@ export function Splash({ config, input, cursor, rows, columns }: { config: Confi
           <Text dimColor> · {config.defaultModel} · {config.provider}</Text>
         </Text>
       </Box>
-      <Text dimColor>{columns >= 48 ? "esc stop · ↑↓ history · everything stays local in ~/.bajajbot" : "esc stop · ↑↓ history"}</Text>
+      <Text dimColor>{columns >= 48 ? "esc interrupt · ↑↓ history · everything stays local in ~/.bajajbot" : "esc interrupt · ↑↓ history"}</Text>
     </Box>
   );
 }

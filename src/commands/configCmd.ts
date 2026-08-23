@@ -1,8 +1,11 @@
 import type { Command } from "commander";
+import { render } from "ink";
+import { createElement } from "react";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { loadConfig, saveConfig, removeConfig } from "../config/store.js";
+import { configExists, loadConfig, saveConfig, removeConfig } from "../config/store.js";
 import type { Config } from "../config/types.js";
+import { SetupWizard } from "../ui/Setup.js";
 
 const openRouterUrl = "https://openrouter.ai/api/v1";
 
@@ -14,17 +17,18 @@ export function registerConfigCommands(program: Command): void {
   const config = program.command("config").description("Manage BajajBot configuration");
 
   config.command("init").description("Create configuration").action(async () => {
-    await initConfig();
+    const created = await initConfig();
+    if (!created) console.log("Setup cancelled.");
   });
 
-  config.command("set-model <id>").description("Change default model").action((defaultModel: string) => {
-    const current = loadConfig();
+  config.command("set-model <id>").description("Change default model").action(async (defaultModel: string) => {
+    const current = await ensureConfig();
     saveConfig({ ...current, defaultModel });
     console.log(`Default model: ${defaultModel}`);
   });
 
-  config.command("show").description("Show configuration").action(() => {
-    const { apiKey, ...config } = loadConfig();
+  config.command("show").description("Show configuration").action(async () => {
+    const { apiKey, ...config } = await ensureConfig();
     console.log(JSON.stringify({ ...config, apiKey: maskApiKey(apiKey) }, null, 2));
   });
 
@@ -46,7 +50,29 @@ export function registerConfigCommands(program: Command): void {
     });
 }
 
-export async function initConfig(): Promise<void> {
+export async function initConfig(): Promise<Config | undefined> {
+  if (!output.isTTY) return initConfigReadline();
+  return await new Promise<Config | undefined>((resolve) => {
+    let settled = false;
+    const finish = (value: Config | undefined) => {
+      if (settled) return;
+      settled = true;
+      if (value) saveConfig(value);
+      resolve(value);
+      instance.unmount();
+    };
+    const instance = render(createElement(SetupWizard, { onFinish: finish }), { exitOnCtrlC: false });
+  });
+}
+
+async function ensureConfig(): Promise<Config> {
+  if (configExists()) return loadConfig();
+  const created = await initConfig();
+  if (!created) throw new Error("Setup cancelled.");
+  return created;
+}
+
+async function initConfigReadline(): Promise<Config | undefined> {
   const prompts = createInterface({ input, output });
   try {
     const choice = await prompts.question("Provider (1: OpenRouter, 2: custom): ");
@@ -56,6 +82,7 @@ export async function initConfig(): Promise<void> {
     const defaultModel = await askRequired(prompts, "Default model: ");
     saveConfig({ provider, apiKey, baseUrl: baseUrl.replace(/\/$/, ""), defaultModel });
     console.log("Config saved.");
+    return { provider, apiKey, baseUrl: baseUrl.replace(/\/$/, ""), defaultModel };
   } finally {
     prompts.close();
   }

@@ -52,9 +52,6 @@ function argPreview(call: NonNullable<Message["toolCalls"]>[number]): string {
 /** Build the flat scrollback of single-line blocks the chat viewport renders from. */
 export function buildChatLines(messages: Message[], columns: number): ChatLine[] {
   const inner = Math.max(columns - 6, 16);
-  const boxWidth = inner + 4;
-  const top = `╭${"─".repeat(boxWidth - 2)}╮`;
-  const bottom = `╰${"─".repeat(boxWidth - 2)}╯`;
   const lines: ChatLine[] = [];
   let seq = 0;
   const push = (node: ReactNode): void => {
@@ -67,25 +64,19 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
     if (index > 0) push(<Text> </Text>);
 
     if (message.role === "user") {
-      push(
-        <Text color="gray">
-          <Text>{top}</Text>
-        </Text>,
-      );
-      for (const line of wrapText(message.content, inner)) {
+      const wrapped = wrapText(message.content, inner);
+      const contentWidth = Math.max(...wrapped.map((line) => line.length), 1);
+      push(<Text color="gray">{`╭${"─".repeat(contentWidth + 2)}╮`}</Text>);
+      for (const line of wrapped) {
         push(
           <Text>
             <Text color="gray">{"│ "}</Text>
-            <Text>{line.padEnd(inner)}</Text>
+            <Text>{line.padEnd(contentWidth)}</Text>
             <Text color="gray">{" │"}</Text>
           </Text>,
         );
       }
-      push(
-        <Text color="gray">
-          <Text>{bottom}</Text>
-        </Text>,
-      );
+      push(<Text color="gray">{`╰${"─".repeat(contentWidth + 2)}╯`}</Text>);
       return;
     }
 

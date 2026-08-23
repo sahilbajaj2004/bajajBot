@@ -10,8 +10,8 @@ import type { Session } from "../session/types.js";
 
 export async function startChat(session?: Session): Promise<void> {
   if (!configExists()) {
-    console.log("No BajajBot config. Setup starts now.");
-    await initConfig();
+    const created = await initConfig();
+    if (!created) return;
   }
   const config = loadConfig();
   const mouse = createMouseStdin(process.stdin as NodeJS.ReadStream & { isTTY?: boolean });

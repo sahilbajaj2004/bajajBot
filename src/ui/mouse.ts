@@ -51,9 +51,24 @@ export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }):
   };
 
   let buffer = Buffer.alloc(0);
+  let escTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // A lone ESC with nothing following it is the Escape key, not a sequence —
+  // flush it after a short wait so Esc presses reach ink immediately.
+  const flushLoneEsc = (): void => {
+    escTimer = undefined;
+    if (buffer.length === 1 && buffer[0] === 0x1b) {
+      stream.write(buffer);
+      buffer = Buffer.alloc(0);
+    }
+  };
 
   const feed = (chunk: Buffer | string): void => {
     buffer = Buffer.concat([buffer, typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk]);
+    if (escTimer !== undefined && buffer.length > 1) {
+      clearTimeout(escTimer);
+      escTimer = undefined;
+    }
     while (buffer.length > 0) {
       const esc = buffer.indexOf(0x1b);
       if (esc === -1) {
@@ -98,7 +113,16 @@ export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }):
       // Any other escape sequence: forward it once fully received (CSI ends in 0x40–0x7e)
       let i = 2;
       while (i < buffer.length && (buffer[i] < 0x40 || buffer[i] > 0x7e)) i += 1;
-      if (i >= buffer.length) return;
+      if (i >= buffer.length) {
+        if (buffer.every((byte) => byte === 0x1b)) {
+          if (buffer.length > 1) {
+            stream.write(buffer.subarray(0, buffer.length - 1));
+            buffer = buffer.subarray(buffer.length - 1);
+          }
+          if (escTimer === undefined) escTimer = setTimeout(flushLoneEsc, 30);
+        }
+        return;
+      }
       stream.write(buffer.subarray(0, i + 1));
       buffer = buffer.subarray(i + 1);
     }
@@ -110,6 +134,7 @@ export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }):
     stream,
     cleanup: () => {
       real.off("data", feed);
+      if (escTimer !== undefined) clearTimeout(escTimer);
       buffer = Buffer.alloc(0);
     },
   };
