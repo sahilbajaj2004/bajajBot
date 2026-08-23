@@ -29,13 +29,8 @@ interface ConfirmRequest {
 
 const MAX_ROUNDS = 10;
 const MAX_TOOL_OUTPUT = 8_000;
-
-function tailLines(text: string, max: number): string {
-  if (max <= 0) return "";
-  const lines = text.split("\n");
-  const tail = lines.slice(-max);
-  return `${lines.length > max ? "…\n" : ""}${tail.join("\n")}`;
-}
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SCROLL_STEP = 4;
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   useInput((_character, key) => {
@@ -88,6 +83,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const [autoSelected, setAutoSelected] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [blink, setBlink] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
@@ -122,6 +118,12 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const showAuto = suggestions.length > 0;
 
   useEffect(() => setAutoSelected(0), [input]);
+
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => setBlink((value) => value + 1), 120);
+    return () => clearInterval(id);
+  }, [busy]);
 
   useInput((character, key) => {
     if (key.ctrl && character?.toLowerCase() === "c") {
@@ -407,10 +409,14 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     }
   }
 
-  const streamTailLines = busy ? Math.min(Math.max(Math.floor(rows / 3), 4), 12) : 0;
-  const streamTail = tailLines(streaming ?? "", streamTailLines);
-  const chat = useMemo(() => buildChatLines(completed, columns), [completed, columns]);
-  const chatBudget = Math.max(rows - 10 - streamTailLines - (confirmRequest ? 13 : 0) - (error ? 3 : 0), 5);
+  const chat = useMemo(() => {
+    const messages: Message[] =
+      streaming !== null && streaming.length > 0
+        ? [...completed, { role: "assistant", content: streaming, timestamp: new Date().toISOString() }]
+        : completed;
+    return buildChatLines(messages, columns);
+  }, [completed, columns, streaming]);
+  const chatBudget = Math.max(rows - 8 - (confirmRequest ? 13 : 0) - (error ? 3 : 0), 5);
   const maxOffset = Math.max(0, chat.length - chatBudget);
   const offset = Math.min(scrollOffset, maxOffset);
   const visibleLines = chat.slice(
@@ -419,12 +425,11 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   );
   const showChatBody = !overlay && (!fresh || confirmRequest !== null);
 
-  const page = Math.max(Math.floor(rows * 0.7), 1);
   const wheelUp = (): void => {
     scrolledRef.current = true;
-    setScrollOffset((value) => value + page);
+    setScrollOffset((value) => value + SCROLL_STEP);
   };
-  const wheelDown = (): void => setScrollOffset((value) => Math.max(0, value - page));
+  const wheelDown = (): void => setScrollOffset((value) => Math.max(0, value - SCROLL_STEP));
 
   return (
     <Box flexDirection="column">
@@ -446,12 +451,11 @@ export function App({ config, session: initialSession }: { config: Config; sessi
         />
       ) : null}
       {showChatBody ? (
-        <Box height={rows} flexDirection="column">
+        <Box height={rows} flexDirection="column" justifyContent="flex-end">
           <ChatViewport lines={visibleLines} />
           {offset > 0 ? (
             <Text dimColor>{`  ↑ ${offset} more lines above · pgDn / end returns to latest`}</Text>
           ) : null}
-          <Box flexGrow={1} />
           {confirmRequest ? (
             <Box marginBottom={1}>
               <Overlay title="Allow action?">
@@ -469,12 +473,12 @@ export function App({ config, session: initialSession }: { config: Config; sessi
             </Box>
           ) : null}
           {showAuto ? <Autocomplete commands={suggestions} selected={autoSelected} /> : null}
-          {busy && streamTail.trim() ? (
-            <Box marginTop={1}>
-              <Text dimColor>{streamTail}</Text>
-            </Box>
-          ) : null}
           {error ? <Text color={theme.danger}>✗ {error}</Text> : null}
+          {busy ? (
+            <Text color={theme.accent}>
+              {`  ${SPINNER_FRAMES[blink % SPINNER_FRAMES.length]} Thinking…`}
+            </Text>
+          ) : null}
           <InputBox value={input} cursor={cursor} active={!busy} />
           <StatusBar model={session.model} tokens={tokens} streaming={busy} />
         </Box>
