@@ -112,8 +112,8 @@ Requires Node.js 18+.
 git clone <your-repository-url>
 cd bajajbot
 npm install
-npm run build
-node dist/bin/bajajbot.js
+
+
 ```
 
 Run verification:

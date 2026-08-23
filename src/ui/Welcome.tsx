@@ -4,27 +4,42 @@ import { theme } from "./theme.js";
 
 const LOGO_TOP = "█▄░█ █▀█ ░░█ █▀█ ░░█ █▄░█ █▀█ ▀█▀";
 const LOGO_BOTTOM = "█░▀█ █▀▄ ▄▄█ █▀▄ ▄▄█ █░▀█ █▄█ ░█░";
-const BOT_START = 26;
+const BOT_START = 25;
 
-const TIPS = [
-  "Esc stops a reply mid-stream — the partial answer is kept",
-  "/model opens a picker for any OpenRouter or self-hosted model",
-  "Sessions save after every reply — /sessions to resume one",
-  "Everything stays local: config and chats live in ~/.bajajbot",
+const FEATURES: Array<[string, string]> = [
+  ["streaming", "replies appear live, rendered as markdown"],
+  ["/model", "pick any OpenRouter or self-hosted model"],
+  ["/sessions", "resume a saved conversation"],
+  ["/new", "wipe the slate and start fresh"],
 ];
 
-export function Welcome({ config, input }: { config: Config; input: string }) {
+export function Splash({ config, input }: { config: Config; input: string }) {
   const { stdout } = useStdout();
   const rows = stdout.rows ?? 24;
-  const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
   return (
-    <Box height={Math.max(rows - 1, 10)} flexDirection="column" justifyContent="center" alignItems="center" rowGap={1}>
-      <Text dimColor>{LOGO_TOP}</Text>
+    <Box height={Math.max(rows - 1, 12)} flexDirection="column" justifyContent="center" alignItems="center" rowGap={1}>
+      <Box flexDirection="column" alignItems="center">
+        <Text dimColor>{LOGO_TOP}</Text>
+        <Text>
+          <Text dimColor>{LOGO_BOTTOM.slice(0, BOT_START)}</Text>
+          <Text bold color={theme.accent}>{LOGO_BOTTOM.slice(BOT_START)}</Text>
+        </Text>
+      </Box>
       <Text>
-        <Text dimColor>{LOGO_BOTTOM.slice(0, BOT_START)}</Text>
-        <Text bold color={theme.accent}>{LOGO_BOTTOM.slice(BOT_START)}</Text>
+        <Text color={theme.accent}>⚡ </Text>
+        <Text bold>bajajbot</Text>
+        <Text dimColor> — terminal AI chat</Text>
       </Text>
-      <Box marginTop={1} flexDirection="column" width={64} borderStyle="bold" borderLeft borderColor={theme.accent} paddingX={1}>
+      <Box marginTop={2} flexDirection="column">
+        {FEATURES.map(([name, description]) => (
+          <Text key={name}>
+            {"  "}
+            <Text color={theme.accent}>{name.padEnd(11)}</Text>
+            <Text dimColor>{description}</Text>
+          </Text>
+        ))}
+      </Box>
+      <Box marginTop={2} flexDirection="column" width={64} borderStyle="round" borderColor={theme.accent} paddingX={1}>
         {input ? (
           <Text>
             {input}
@@ -34,17 +49,11 @@ export function Welcome({ config, input }: { config: Config; input: string }) {
           <Text dimColor>Ask anything… "/help"</Text>
         )}
         <Text>
-          <Text color={theme.accent}>chat</Text>
+          <Text color={theme.accent}>● chat</Text>
           <Text dimColor> · {config.defaultModel} · {config.provider}</Text>
         </Text>
       </Box>
-      <Text dimColor>/model models · /sessions chats · /help commands</Text>
-      <Box marginTop={2}>
-        <Text>
-          <Text color={theme.accent}>● Tip </Text>
-          <Text dimColor>{tip}</Text>
-        </Text>
-      </Box>
+      <Text dimColor>esc stop · ↑↓ history · everything stays local in ~/.bajajbot</Text>
     </Box>
   );
 }

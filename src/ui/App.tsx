@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput } from "ink";import { useEffect, useRef, useState } from "react";
+import { Box, Text, useApp, useInput, useStdout } from "ink";import { useEffect, useRef, useState } from "react";
 import type { Config } from "../config/types.js";
 import { removeConfig } from "../config/store.js";
 import { isAbortError, streamChat, type Usage } from "../provider/client.js";
@@ -8,12 +8,13 @@ import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { InputBox } from "./InputBox.js";
 import { Markdown } from "./Markdown.js";
-import { MessageHistory } from "./MessageList.js";
+import { MessageList, blockHeight, visibleWindow } from "./MessageList.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
 import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
 import { theme } from "./theme.js";
+import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
 type OverlayKind = "model" | "sessions" | "help" | "logout" | null;
@@ -66,14 +67,16 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const [sent, setSent] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [autoSelected, setAutoSelected] = useState(0);
-  const [historyMounted, setHistoryMounted] = useState(true);
-  const [historyOffset, setHistoryOffset] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const rows = Math.max(stdout.rows ?? 24, 10);
+  const columns = Math.max(stdout.columns ?? 80, 40);
 
   const busy = streaming !== null;
+  const fresh = completed.length === 0;
   const suggestions = busy || overlay ? [] : filterCommands(input);
   const showAuto = suggestions.length > 0;
 
@@ -180,15 +183,11 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   }
 
   function openOverlay(kind: Exclude<OverlayKind, null>): void {
-    setHistoryOffset(completed.length);
-    setHistoryMounted(false);
     setOverlay(kind);
   }
 
   function closeOverlay(): void {
     setOverlay(null);
-    setHistoryOffset(completed.length);
-    setHistoryMounted(true);
   }
 
   function switchModel(id: string): void {
@@ -206,8 +205,6 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       setCompleted(loaded.messages);
       setTokens(null);
       setError("");
-      setHistoryOffset(0);
-      setHistoryMounted(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -219,8 +216,6 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     setCompleted([]);
     setTokens(null);
     setError("");
-    setHistoryOffset(0);
-    setHistoryMounted(true);
   }
 
   function logout(): void {
@@ -256,9 +251,12 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     }
   }
 
+  const streamReserve = busy ? blockHeight(streaming ?? "", "assistant", columns) : 0;
+  const budget = Math.max(rows - 8 - streamReserve - (error ? 2 : 0), 3);
+
   return (
     <Box flexDirection="column">
-      {historyMounted ? <MessageHistory key={session.id} messages={completed.slice(historyOffset)} /> : null}
+      {fresh && !overlay ? <Splash config={config} input={input} /> : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
@@ -273,8 +271,10 @@ export function App({ config, session: initialSession }: { config: Config; sessi
           }}
         />
       ) : null}
-      {!overlay ? (
-        <>
+      {!overlay && !fresh ? (
+        <Box height={rows} flexDirection="column">
+          <MessageList messages={visibleWindow(completed, columns, budget)} />
+          <Box flexGrow={1} />
           {showAuto ? <Autocomplete commands={suggestions} selected={autoSelected} /> : null}
           {busy ? (
             <Box marginTop={1}>
@@ -284,7 +284,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
           {error ? <Text color={theme.danger}>✗ {error}</Text> : null}
           <InputBox value={input} active={!busy} />
           <StatusBar model={session.model} tokens={tokens} streaming={busy} />
-        </>
+        </Box>
       ) : null}
     </Box>
   );

@@ -3,14 +3,25 @@ import { theme } from "./theme.js";
 
 export function StatusBar({ model, tokens, streaming }: { model: string; tokens: number | null; streaming: boolean }) {
   return (
-    <Box justifyContent="space-between">
-      <Text dimColor>
-        <Text color={streaming ? "yellow" : "green"}>● </Text>
-        {model}
-        {tokens !== null ? ` · ${tokens.toLocaleString()} tok` : ""}
-        {streaming ? " · streaming… esc to stop" : ""}
-      </Text>
-      <Text dimColor>ctrl+c exit</Text>
+    <Box flexDirection="column">
+      <Box borderStyle="single" borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" />
+      <Box justifyContent="space-between" marginTop={0}>
+        <Text>
+          <Text bold color={theme.accent}>█▀█ </Text>
+          <Text bold>bajajbot</Text>
+          <Text dimColor> · {model}</Text>
+        </Text>
+        <Text dimColor>
+          {streaming ? (
+            <>
+              <Text color="yellow">● streaming… esc stops</Text>
+              {" · "}
+            </>
+          ) : null}
+          {tokens !== null ? `${tokens.toLocaleString()} tok · ` : ""}
+          ctrl+c exit
+        </Text>
+      </Box>
     </Box>
   );
 }
