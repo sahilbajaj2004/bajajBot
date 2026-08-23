@@ -3,11 +3,11 @@ import { render } from "ink";
 import { createElement } from "react";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { OPENROUTER_URL } from "../config/constants.js";
 import { configExists, loadConfig, saveConfig, removeConfig } from "../config/store.js";
 import type { Config } from "../config/types.js";
+import { normalizeBaseUrl } from "../util/url.js";
 import { SetupWizard } from "../ui/Setup.js";
-
-const openRouterUrl = "https://openrouter.ai/api/v1";
 
 function maskApiKey(apiKey: string): string {
   return apiKey.length <= 8 ? "********" : `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`;
@@ -78,11 +78,12 @@ async function initConfigReadline(): Promise<Config | undefined> {
     const choice = await prompts.question("Provider (1: OpenRouter, 2: custom): ");
     const provider: Config["provider"] = choice.trim() === "2" ? "custom" : "openrouter";
     const apiKey = await askRequired(prompts, "API key: ");
-    const baseUrl = await askUrl(prompts, "Base URL", provider === "openrouter" ? openRouterUrl : undefined);
+    const baseUrl = normalizeBaseUrl(await askUrl(prompts, "Base URL", provider === "openrouter" ? OPENROUTER_URL : undefined));
     const defaultModel = await askRequired(prompts, "Default model: ");
-    saveConfig({ provider, apiKey, baseUrl: baseUrl.replace(/\/$/, ""), defaultModel });
+    const config: Config = { provider, apiKey, baseUrl, defaultModel };
+    saveConfig(config);
     console.log("Config saved.");
-    return { provider, apiKey, baseUrl: baseUrl.replace(/\/$/, ""), defaultModel };
+    return config;
   } finally {
     prompts.close();
   }

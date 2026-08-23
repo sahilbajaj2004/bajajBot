@@ -16,7 +16,7 @@ import { Overlay } from "./Overlay.js";
 import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
 import { sessionTitle, setTerminalTitle } from "./title.js";
-import { theme } from "./theme.js";
+import { DEFAULT_COLUMNS, DEFAULT_ROWS, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
@@ -32,6 +32,10 @@ const MAX_ROUNDS = 10;
 const MAX_TOOL_OUTPUT = 8_000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SCROLL_STEP = 4;
+const CHAT_RESERVED_ROWS = 8;
+const CONFIRM_RESERVED_ROWS = 13;
+const ERROR_RESERVED_ROWS = 3;
+const MIN_CHAT_BUDGET = 5;
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   useInput((_character, key) => {
@@ -100,10 +104,10 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   }
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const [size, setSize] = useState({ rows: stdout.rows ?? 24, columns: stdout.columns ?? 80 });
+  const [size, setSize] = useState({ rows: stdout.rows ?? DEFAULT_ROWS, columns: stdout.columns ?? DEFAULT_COLUMNS });
 
   useEffect(() => {
-    const update = () => setSize({ rows: stdout.rows ?? 24, columns: stdout.columns ?? 80 });
+    const update = () => setSize({ rows: stdout.rows ?? DEFAULT_ROWS, columns: stdout.columns ?? DEFAULT_COLUMNS });
     stdout.on("resize", update);
     return () => {
       stdout.off("resize", update);
@@ -422,7 +426,10 @@ export function App({ config, session: initialSession }: { config: Config; sessi
         : completed;
     return buildChatLines(messages, columns);
   }, [completed, columns, streaming]);
-  const chatBudget = Math.max(rows - 8 - (confirmRequest ? 13 : 0) - (error ? 3 : 0), 5);
+  const chatBudget = Math.max(
+    rows - CHAT_RESERVED_ROWS - (confirmRequest ? CONFIRM_RESERVED_ROWS : 0) - (error ? ERROR_RESERVED_ROWS : 0),
+    MIN_CHAT_BUDGET,
+  );
   const maxOffset = Math.max(0, chat.length - chatBudget);
   const offset = Math.min(scrollOffset, maxOffset);
   const visibleLines = chat.slice(

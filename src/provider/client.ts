@@ -1,6 +1,7 @@
 import type { Config } from "../config/types.js";
 import type { Message, ToolCall } from "../session/types.js";
 import type { ToolSchema } from "../tools/types.js";
+import { normalizeBaseUrl } from "../util/url.js";
 
 export interface Usage {
   prompt_tokens?: number;
@@ -53,7 +54,7 @@ export async function* streamChat(config: Config, messages: Message[], options: 
   };
   if (options.tools?.length) body.tools = options.tools;
 
-  const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetch(`${normalizeBaseUrl(config.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -121,7 +122,7 @@ export async function* streamChat(config: Config, messages: Message[], options: 
 }
 
 export async function completeChat(config: Config, messages: Message[]): Promise<string> {
-  const response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetch(`${normalizeBaseUrl(config.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: config.defaultModel, messages: messages.map(toApiMessage), stream: false }),

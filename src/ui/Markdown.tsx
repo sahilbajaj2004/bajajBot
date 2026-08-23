@@ -2,6 +2,7 @@ import { Text, useStdout } from "ink";
 import { useMemo } from "react";
 import { Marked } from "marked";
 import { markedTerminal } from "marked-terminal";
+import { DEFAULT_COLUMNS } from "./theme.js";
 
 export function renderMarkdown(content: string, columns: number): string {
   try {
@@ -14,7 +15,7 @@ export function renderMarkdown(content: string, columns: number): string {
 
 export function Markdown({ content }: { content: string }) {
   const { stdout } = useStdout();
-  const columns = Math.max(stdout.columns ?? 80, 20);
+  const columns = Math.max(stdout.columns ?? DEFAULT_COLUMNS, 20);
   const rendered = useMemo(() => renderMarkdown(content, columns), [content, columns]);
   return <Text>{rendered}</Text>;
 }

@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import type { Config } from "../config/types.js";
 import { fetchModels, type ModelInfo } from "../provider/models.js";
 import { Overlay } from "./Overlay.js";
+import { DEFAULT_ROWS, theme } from "./theme.js";
 
 const MAX_VIEW = 10;
 
 export function useWindow(filteredLength: number, active: number) {
   const { stdout } = useStdout();
-  const viewSize = Math.max(3, Math.min(MAX_VIEW, (stdout.rows ?? 24) - 14));
+  const viewSize = Math.max(3, Math.min(MAX_VIEW, (stdout.rows ?? DEFAULT_ROWS) - 14));
   const start = Math.max(0, Math.min(active - Math.floor(viewSize / 2), filteredLength - viewSize));
   return { viewSize, start };
 }
@@ -76,7 +77,7 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
         visible.map((model, index) => {
           const isActive = start + index === active;
           return (
-            <Text key={model.id} bold={isActive} color={isActive ? "#ff8c42" : undefined}>
+            <Text key={model.id} bold={isActive} color={isActive ? theme.accent : undefined}>
               {` ${isActive ? "›" : " "} ${model.id}`}
             </Text>
           );

@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { appDir } from "../config/store.js";
 import type { Session } from "./types.js";
 
-const sessionsDir = () => join(homedir(), ".bajajbot", "sessions");
+const sessionsDir = () => join(appDir(), "sessions");
 const sessionPath = (id: string) => join(sessionsDir(), `${id}.json`);
 
 export function createSession(model: string): Session {

@@ -1,9 +1,9 @@
 import { Box, Text, useStdout } from "ink";
-import { theme } from "./theme.js";
+import { DEFAULT_COLUMNS, theme } from "./theme.js";
 
 export function StatusBar({ model, tokens, streaming }: { model: string; tokens: number | null; streaming: boolean }) {
   const { stdout } = useStdout();
-  const wide = (stdout.columns ?? 80) >= 70;
+  const wide = (stdout.columns ?? DEFAULT_COLUMNS) >= 70;
   return (
     <Box flexDirection="column">
       <Box borderStyle="single" borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" />

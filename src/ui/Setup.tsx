@@ -1,12 +1,10 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import { Fragment, useState } from "react";
+import { OPENROUTER_URL } from "../config/constants.js";
 import type { Config } from "../config/types.js";
-import { theme } from "./theme.js";
-
-const OPENROUTER_URL = "https://openrouter.ai/api/v1";
-const LOGO_TOP =    "█▄▄ ▄▀█   █ ▄▀█   █ █▄▄ █▀█ ▀█▀";
-const LOGO_BOTTOM = "█▄█ █▀█ █▄█ █▀█ █▄█ █▄█ █▄█  █ ";
-const BOT_START = 25;
+import { normalizeBaseUrl } from "../util/url.js";
+import { theme, DEFAULT_COLUMNS } from "./theme.js";
+import { BOT_START, LOGO_BOTTOM, LOGO_TOP } from "./logo.js";
 
 const STEPS = ["provider", "api key", "base url", "model", "review"] as const;
 const LABEL_PAD = Math.max(...STEPS.map((step) => step.length));
@@ -86,7 +84,7 @@ function Hint({ children }: { children: string }) {
 
 export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void }) {
   const { stdout } = useStdout();
-  const columns = stdout.columns ?? 80;
+  const columns = stdout.columns ?? DEFAULT_COLUMNS;
   const wide = columns >= 62;
   const cardWidth = Math.min(64, Math.max(columns - 2, 40));
 
@@ -99,7 +97,7 @@ export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void 
   const [saved, setSaved] = useState(false);
 
   const provider = PROVIDERS[choice].id;
-  const resolvedUrl = (baseUrl.trim() || (provider === "openrouter" ? OPENROUTER_URL : "")).replace(/\/$/, "");
+  const resolvedUrl = normalizeBaseUrl(baseUrl.trim() || (provider === "openrouter" ? OPENROUTER_URL : ""));
 
   const advance = () => {
     setError("");

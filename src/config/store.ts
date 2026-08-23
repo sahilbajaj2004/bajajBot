@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { APP_DIR_NAME } from "./constants.js";
 import type { Config } from "./types.js";
 
-const appDir = () => join(homedir(), ".bajajbot");
+export const appDir = () => join(homedir(), APP_DIR_NAME);
 const configPath = () => join(appDir(), "config.json");
 
 export function configExists(): boolean {

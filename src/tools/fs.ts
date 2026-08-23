@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import type { ToolArgs, ToolContext, ToolDef } from "./types.js";
 
 const MAX_READ = 60_000;
@@ -73,7 +73,7 @@ export const writeFile: ToolDef = {
   execute: (args, ctx) => {
     const full = safePath(ctx, text(args, "path"));
     const content = text(args, "content");
-    mkdirSync(full.slice(0, full.lastIndexOf("/")) || ".", { recursive: true });
+    mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
     return `Wrote ${Buffer.byteLength(content)} bytes to ${args.path}`;
   },

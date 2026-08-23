@@ -2,10 +2,7 @@ import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
 import type { Config } from "../config/types.js";
 import { theme } from "./theme.js";
-
-const LOGO_TOP    = "█▄▄ ▄▀█   █ ▄▀█   █ █▄▄ █▀█ ▀█▀";
-const LOGO_BOTTOM = "█▄█ █▀█ █▄█ █▀█ █▄█ █▄█ █▄█  █ ";
-const BOT_START = 25;
+import { BOT_START, LOGO_BOTTOM, LOGO_TOP } from "./logo.js";
 
 const FEATURES: Array<[string, string]> = [
   ["streaming", "replies appear live, rendered as markdown"],

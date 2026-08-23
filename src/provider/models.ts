@@ -1,10 +1,12 @@
+import { normalizeBaseUrl } from "../util/url.js";
+
 export interface ModelInfo {
   id: string;
   name?: string;
 }
 
 export async function fetchModels(baseUrl: string, apiKey: string): Promise<ModelInfo[]> {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/models`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     signal: AbortSignal.timeout(8000),
   });
