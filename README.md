@@ -1,28 +1,33 @@
 # BajajBot
 
-**Fast, private terminal chat for any OpenAI-compatible model.**
+**A terminal AI coding assistant for any OpenAI-compatible model.**
 
-Bring your own API key, choose your model, and chat from your terminal. BajajBot
-supports OpenRouter and custom endpoints such as Ollama, vLLM, and LM Studio.
+Bring your own API key, pick your model, and chat with an agent that can read,
+write, edit, and run code directly in your project — all from your terminal.
+BajajBot supports OpenRouter and custom endpoints such as Ollama, vLLM, and
+LM Studio, on macOS, Linux, and Windows.
 
 ```sh
 npx bajajbot
 ```
 
-No shell execution. No project-file access. No agent tools. Only chat.
+## Features
 
-## Why BajajBot?
-
-- Live token streaming in a clean terminal UI
-- Your choice of model and provider
-- First-run setup: no config files to create manually
-- Conversations saved locally and resumable
-- OpenAI-compatible APIs, including self-hosted models
+- Live token streaming in a clean terminal UI (Ink + React)
+- **Agent tools** — read, write, edit, delete files, list directories, and run shell commands
+- Risky actions require explicit confirmation; nothing runs without your approval
+- Your choice of model and provider, switchable mid-chat with `/model`
+- First-run setup wizard — no config files to create manually
+- Conversations saved locally and resumable any time
+- Markdown replies with syntax-highlighted code
+- Mouse-wheel scrolling, PageUp/PageDown, and input history with arrow keys
+- Stop generation mid-stream with `Esc`
 - API key masked in CLI output and stored only on your computer
+- Cross-platform: bash on macOS/Linux, cmd on Windows
 
 ## Quick start
 
-Run without installing globally:
+Run without installing:
 
 ```sh
 npx bajajbot
@@ -35,60 +40,67 @@ npm install -g bajajbot
 bajajbot
 ```
 
-On first launch BajajBot asks for:
+On first launch the setup wizard asks for:
 
-1. Provider: OpenRouter or a custom OpenAI-compatible endpoint
+1. Provider — OpenRouter or a custom OpenAI-compatible endpoint
 2. Your API key
 3. API base URL
-4. Model ID, for example `openai/gpt-oss-20b:free`
+4. Default model ID, for example `openai/gpt-oss-20b:free`
 
-Then start chatting. Configuration is saved at `~/.bajajbot/config.json`.
+Configuration is saved at `~/.bajajbot/config.json` (Windows:
+`C:\Users\<you>\.bajajbot\config.json`).
 
-## Commands
+## CLI commands
 
 ```sh
 bajajbot                         # start a new chat
-bajajbot config show             # show current config; API key stays masked
-bajajbot config set-model <id>   # change default model
-bajajbot sessions                # select a saved chat
-bajajbot chat --resume <id>      # resume a chat directly
+bajajbot chat --resume <id>      # resume a saved chat directly
+bajajbot sessions                # pick a saved chat from a picker
+bajajbot config init             # re-run the setup wizard
+bajajbot config show             # show config; API key stays masked
+bajajbot config set-model <id>   # change the default model
+bajajbot logout                  # delete config and all sessions
 ```
 
-Inside chat, these slash commands are available:
+## Slash commands (inside chat)
 
 ```text
-/model <id>     Switch the active model for this chat session
-/model          Open a searchable model picker
-/sessions       Resume a saved chat from an overlay
-/new            Start a fresh chat
-/help           Show available slash commands
+/model <id>      Switch the model for this chat
+/model           Open a searchable model picker (type to filter, Enter to choose)
+/sessions        Resume a saved chat from an overlay
+/new             Start a fresh chat
+/logout          Delete all config and sessions
+/help            Show the command list
 ```
 
-The interface renders replies as markdown with syntax-highlighted code,
-offers command autocomplete as you type `/`, recalls sent messages with
-the arrow keys, and lets you stop generation mid-stream with `Esc`.
+## Agent tools
 
-## Architecture
+BajajBot's assistant can use these tools on your project directory:
+
+| Tool | What it does | Confirmation |
+| --- | --- | --- |
+| `read_file` | Read a text file | No |
+| `list_dir` | List a directory | No |
+| `write_file` | Create or overwrite a file | Yes |
+| `edit_file` | Replace an exact snippet in a file | Yes |
+| `delete_path` | Permanently delete a file or directory | Yes |
+| `run_command` | Run a shell command (bash/cmd) | Yes |
+
+Every risky action shows a confirmation prompt before it runs — press `y` to
+allow or `n`/`Esc` to deny. All paths are sandboxed to the working directory;
+anything outside it is rejected.
+
+## Keyboard shortcuts
 
 ```text
-Terminal command
-      │
-      ├── Config
-      │     ~/.bajajbot/config.json
-      │
-      └── Ink chat UI
-             │
-             ├── OpenAI-compatible client
-             │     POST /chat/completions
-             │     manual SSE token parser
-             │
-             └── Session history
-                   ~/.bajajbot/sessions/<id>.json
+Enter            Send message / confirm
+Esc              Interrupt streaming / close dialogs / deny action
+↑ / ↓            Input history, or move in pickers
+PgUp / PgDn      Scroll chat history (mouse wheel works too)
+Home / End       Jump to top / return to latest
+Ctrl+C           Exit (shows resume command for the session)
+Tab              Autocomplete slash commands
 ```
-
-The terminal UI collects messages, buffers streamed tokens for smooth renders,
-and stores every completed reply locally. The provider client sends only chat
-roles and message content to your selected API endpoint.
 
 ## Providers
 
@@ -98,11 +110,45 @@ roles and message content to your selected API endpoint.
 | Ollama | `http://localhost:11434/v1` | `llama3.2` |
 | vLLM / LM Studio | Your server's `/v1` endpoint | Your served model ID |
 
-## Privacy and scope
+Any OpenAI-compatible `/v1` endpoint works.
 
-Your API key and session history remain under `~/.bajajbot/`. BajajBot does
-not inspect your project directory, run shell commands, edit files, or invoke
-agent tools. Messages go only to the provider endpoint you configure.
+## Privacy and data
+
+- Config and sessions stay under `~/.bajajbot/` — nothing is synced anywhere
+- API key is stored with `0600` permissions and always masked in output
+- Messages go only to the endpoint you configure
+- File/shell tools are scoped to the directory where you launched `bajajbot`
+
+## Upgrading
+
+Installed from npm:
+
+```sh
+npm update -g bajajbot
+# or pin to latest explicitly
+npm install -g bajajbot@latest
+```
+
+Or always run the newest version without installing:
+
+```sh
+npx bajajbot@latest
+```
+
+Installed from a local clone (your own fork / unpublished build):
+
+```sh
+git pull
+npm install
+npm run build
+npm install -g .        # re-links the global command to the new build
+```
+
+Verify what's running:
+
+```sh
+bajajbot --version
+```
 
 ## Development
 
@@ -112,30 +158,35 @@ Requires Node.js 18+.
 git clone <your-repository-url>
 cd bajajbot
 npm install
-
-
+npm run build       # type-check + compile to dist/
+npm test            # build + run the test suite
+npm run dev         # run from source with tsx
+npm run stream      # one-shot prompt without the TUI
 ```
 
-Run verification:
+### Project layout
 
-```sh
-npm test
+```text
+bin/bajajbot.ts          CLI entry (commander)
+src/config/              Config types, constants, load/save (~/.bajajbot)
+src/provider/            OpenAI-compatible client (SSE streaming) + model list
+src/tools/               Agent tools: fs, shell, schemas, system prompt
+src/session/             Session model + local history storage
+src/commands/            CLI commands (chat, config, sessions)
+src/ui/                  Ink components: App, pickers, overlays, markdown
+src/util/                Small shared helpers
+test/                    node:test suites
 ```
 
 ## Publish to npm
 
 ```sh
 npm login
+npm version patch        # bumps version and creates a git tag
 npm run build
 npm test
-npm pack --dry-run
+npm pack --dry-run       # inspect the package contents
 npm publish
-```
-
-Each publish needs a new version:
-
-```sh
-npm version patch --no-git-tag-version
 ```
 
 ## License
