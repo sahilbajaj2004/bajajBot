@@ -1,5 +1,8 @@
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
+import { theme } from "./theme.js";
+import { Overlay } from "./Overlay.js";
+import { useWindow, WindowHint } from "./ModelPicker.js";
 
 export function SessionPicker({
   sessions,
@@ -9,17 +12,39 @@ export function SessionPicker({
   onSelect: (id?: string) => void;
 }) {
   const [selected, setSelected] = useState(0);
+  const active = Math.min(selected, Math.max(0, sessions.length - 1));
+  const { viewSize, start } = useWindow(sessions.length, active);
+  const visible = sessions.slice(start, start + viewSize);
+
   useInput((_input, key) => {
-    if (key.upArrow) setSelected((value) => Math.max(0, value - 1));
-    else if (key.downArrow) setSelected((value) => Math.min(sessions.length - 1, value + 1));
-    else if (key.return) onSelect(sessions[selected]?.id);
+    if (key.upArrow) setSelected(Math.max(0, active - 1));
+    else if (key.downArrow) setSelected(Math.min(sessions.length - 1, active + 1));
+    else if (key.pageUp) setSelected(0);
+    else if (key.pageDown) setSelected(sessions.length - 1);
+    else if (key.return) onSelect(sessions[active]?.id);
     else if (key.escape) onSelect();
   });
 
-  return <Box flexDirection="column">
-    <Text bold>Choose session</Text>
-    {sessions.map((session, index) => <Text key={session.id} color={index === selected ? "cyan" : undefined}>
-      {index === selected ? "> " : "  "}{session.preview} · {session.createdAt}
-    </Text>)}
-  </Box>;
+  return (
+    <Overlay title="Resume session">
+      {sessions.length === 0 ? <Text dimColor> No saved sessions.</Text> : null}
+      {visible.map((session, index) => {
+        const isActive = start + index === active;
+        return (
+          <Text key={session.id} bold={isActive} color={isActive ? theme.accent : undefined}>
+            {` ${isActive ? "›" : " "} ${session.preview} `}
+            <Text dimColor>· {session.id}</Text>
+          </Text>
+        );
+      })}
+      <Box marginTop={1} justifyContent="space-between">
+        <Text dimColor>Sessions</Text>
+        {sessions.length > 0 ? (
+          <Text dimColor>{active + 1}/{sessions.length}</Text>
+        ) : null}
+      </Box>
+      <WindowHint shown={viewSize} total={sessions.length} />
+      <Text dimColor>↑↓ select · enter resume · esc close</Text>
+    </Overlay>
+  );
 }

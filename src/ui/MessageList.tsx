@@ -1,15 +1,32 @@
-import { Box, Text } from "ink";
+import { Box, Static, Text } from "ink";
 import type { Message } from "../session/types.js";
+import { Markdown } from "./Markdown.js";
+import { theme } from "./theme.js";
 
-export function MessageList({ messages }: { messages: Message[] }) {
-  return <Box flexDirection="column" gap={1}>
-    {messages.map((message, index) => (
-      <Box key={`${message.timestamp}-${index}`} flexDirection="column">
-        <Text bold color={message.role === "user" ? "cyan" : "green"}>
-          {message.role === "user" ? "You" : "BajajBot"}
+function MessageRow({ message }: { message: Message }) {
+  if (message.role === "system") return null;
+  if (message.role === "user") {
+    return (
+      <Box marginTop={1}>
+        <Text>
+          <Text bold color={theme.accent}>You › </Text>
+          {message.content}
         </Text>
-        <Text wrap="wrap">{message.content}</Text>
       </Box>
-    ))}
-  </Box>;
+    );
+  }
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Text bold dimColor>BajajBot</Text>
+      <Markdown content={message.content} />
+    </Box>
+  );
+}
+
+export function MessageHistory({ messages }: { messages: Message[] }) {
+  return (
+    <Static items={messages}>
+      {(message, index) => <MessageRow key={`${index}-${message.timestamp}`} message={message} />}
+    </Static>
+  );
 }

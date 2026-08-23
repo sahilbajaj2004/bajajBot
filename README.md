@@ -57,9 +57,16 @@ bajajbot chat --resume <id>      # resume a chat directly
 Inside chat, these slash commands are available:
 
 ```text
-/model <id>    Switch the active model for this chat session
-/help          Show available slash commands
+/model <id>     Switch the active model for this chat session
+/model          Open a searchable model picker
+/sessions       Resume a saved chat from an overlay
+/new            Start a fresh chat
+/help           Show available slash commands
 ```
+
+The interface renders replies as markdown with syntax-highlighted code,
+offers command autocomplete as you type `/`, recalls sent messages with
+the arrow keys, and lets you stop generation mid-stream with `Esc`.
 
 ## Architecture
 

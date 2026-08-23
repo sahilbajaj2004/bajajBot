@@ -1,70 +1,262 @@
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Config } from "../config/types.js";
-import { streamChat } from "../provider/client.js";
-import type { Message } from "../session/types.js";
-import type { Session } from "../session/types.js";
-import { saveSession } from "../session/history.js";
+import { isAbortError, streamChat, type Usage } from "../provider/client.js";
+import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
+import type { Message, Session } from "../session/types.js";
+import { Autocomplete } from "./Autocomplete.js";
+import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { InputBox } from "./InputBox.js";
-import { MessageList } from "./MessageList.js";
+import { Markdown } from "./Markdown.js";
+import { MessageHistory } from "./MessageList.js";
+import { ModelPicker } from "./ModelPicker.js";
+import { Overlay } from "./Overlay.js";
+import { SessionPicker } from "./SessionPicker.js";
 import { StatusBar } from "./StatusBar.js";
+import { theme } from "./theme.js";
+import { cycleHistory } from "./history.js";
 
-export function App({ config, session }: { config: Config; session: Session }) {
-  const [messages, setMessages] = useState<Message[]>(session.messages);
+type OverlayKind = "model" | "sessions" | "help" | null;
+
+function HelpDialog({ onClose }: { onClose: () => void }) {
+  useInput((_character, key) => {
+    if (key.escape || key.return) onClose();
+  });
+  return (
+    <Overlay title="Commands">
+      {COMMANDS.map((command) => (
+        <Text key={command.name}>
+          {"  "}
+          {command.name.padEnd(11)}
+          <Text dimColor>{command.description}</Text>
+        </Text>
+      ))}
+      <Text dimColor>{"  "}esc / enter close</Text>
+    </Overlay>
+  );
+}
+
+export function App({ config, session: initialSession }: { config: Config; session: Session }) {
+  const [session, setSession] = useState<Session>(initialSession);
+  const [completed, setCompleted] = useState<Message[]>(initialSession.messages);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [streamingReply, setStreamingReply] = useState("");
+  const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [tokens, setTokens] = useState<number | null>(null);
+  const [overlay, setOverlay] = useState<OverlayKind>(null);
+  const [sent, setSent] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const [autoSelected, setAutoSelected] = useState(0);
+  const [historyMounted, setHistoryMounted] = useState(true);
+  const [historyOffset, setHistoryOffset] = useState(0);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const bufferRef = useRef("");
+
+  const busy = streaming !== null;
+  const suggestions = busy || overlay ? [] : filterCommands(input);
+  const showAuto = suggestions.length > 0;
+
+  useEffect(() => setAutoSelected(0), [input]);
 
   useInput((character, key) => {
-    if (sending) return;
-    if (key.return) void submit();
-    else if (key.backspace || key.delete) setInput((value) => value.slice(0, -1));
-    else if (!key.ctrl && !key.meta) setInput((value) => value + character);
+    if (overlay) return;
+    if (busy) {
+      if (key.escape) abortRef.current?.abort();
+      return;
+    }
+    if (key.escape || key.tab && !showAuto) return;
+    if (key.return) {
+      run(showAuto ? suggestions[Math.min(autoSelected, suggestions.length - 1)].name : input);
+      return;
+    }
+    if (key.tab && showAuto) {
+      setInput(suggestions[autoSelected].name + " ");
+      return;
+    }
+    if (key.upArrow) {
+      if (showAuto) return setAutoSelected(Math.max(0, autoSelected - 1));
+      applyHistory(-1);
+      return;
+    }
+    if (key.downArrow) {
+      if (showAuto) return setAutoSelected(Math.min(suggestions.length - 1, autoSelected + 1));
+      applyHistory(1);
+      return;
+    }
+    if (key.backspace || key.delete) return setInput((value) => value.slice(0, -1));
+    if (key.ctrl || key.meta || !character) return;
+    const clean = character.replace(/[\x00-\x1f\x7f]/g, "");
+    const hasBreak = /[\r\n]/.test(character);
+    if (clean) setInput((value) => value + clean);
+    if (hasBreak) run(input + clean);
   });
 
-  async function submit() {
-    const content = input.trim();
+  function applyHistory(direction: -1 | 1) {
+    const next = cycleHistory(sent, historyIndex, direction);
+    setInput(next.draft);
+    setHistoryIndex(next.index);
+  }
+
+  function rememberMessage(content: string): void {
+    setSent((previous) => [...previous, content]);
+    setHistoryIndex(null);
+  }
+
+  async function submit(explicit?: string): Promise<void> {
+    const content = (explicit ?? input).trim();
     if (!content) return;
-    const userMessage: Message = { role: "user", content, timestamp: new Date().toISOString() };
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
     setInput("");
     setError("");
-    setSending(true);
-    let reply = "";
+    rememberMessage(content);
+    await send([
+      ...session.messages,
+      { role: "user", content, timestamp: new Date().toISOString() },
+    ]);
+  }
+
+  async function send(messages: Message[]): Promise<void> {
+    const base: Session = { ...session, messages };
+    setCompleted(messages);
+    setSession(base);
+    bufferRef.current = "";
+    setStreaming("");
+    setError("");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let usage: Usage | undefined;
+    let failure = "";
+    const flush = setInterval(() => setStreaming(bufferRef.current), 50);
     try {
-      const flush = setInterval(() => setStreamingReply(reply), 50);
-      try {
-        for await (const token of streamChat(config, nextMessages)) reply += token;
-      } finally {
-        clearInterval(flush);
+      for await (const token of streamChat({ ...config, defaultModel: base.model }, messages, {
+        signal: controller.signal,
+        onUsage: (value) => {
+          usage = value;
+        },
+      })) {
+        bufferRef.current += token;
       }
-      setStreamingReply(reply);
-      const completed = [...nextMessages, { role: "assistant" as const, content: reply, timestamp: new Date().toISOString() }];
-      setMessages(completed);
-      saveSession({ ...session, updatedAt: new Date().toISOString(), messages: completed });
-      setStreamingReply("");
-    } catch (caught) {
-      const partial = reply ? [...nextMessages, { role: "assistant" as const, content: reply, timestamp: new Date().toISOString() }] : nextMessages;
-      setMessages(partial);
-      saveSession({ ...session, updatedAt: new Date().toISOString(), messages: partial });
-      setStreamingReply("");
-      setError(caught instanceof Error ? caught.message : String(caught));
+    } catch (cause) {
+      if (!isAbortError(cause)) failure = cause instanceof Error ? cause.message : String(cause);
     } finally {
-      setSending(false);
+      clearInterval(flush);
+      abortRef.current = null;
+    }
+    finish(base, bufferRef.current, failure, usage);
+  }
+
+  function finish(base: Session, reply: string, failure: string, usage?: Usage): void {
+    const done = reply
+      ? [...base.messages, { role: "assistant" as const, content: reply, timestamp: new Date().toISOString() }]
+      : base.messages;
+    const next: Session = { ...base, messages: done, updatedAt: new Date().toISOString() };
+    saveSession(next);
+    setCompleted(done);
+    setSession(next);
+    setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
+    bufferRef.current = "";
+    setStreaming(null);
+    if (failure) setError(failure);
+  }
+
+  function openOverlay(kind: Exclude<OverlayKind, null>): void {
+    setHistoryOffset(completed.length);
+    setHistoryMounted(false);
+    setOverlay(kind);
+  }
+
+  function closeOverlay(): void {
+    setOverlay(null);
+    setHistoryOffset(completed.length);
+    setHistoryMounted(true);
+  }
+
+  function switchModel(id: string): void {
+    const next: Session = { ...session, model: id };
+    saveSession(next);
+    setSession(next);
+    setTokens(null);
+    setError("");
+  }
+
+  function resume(id: string): void {
+    try {
+      const loaded = loadSession(id);
+      setSession(loaded);
+      setCompleted(loaded.messages);
+      setTokens(null);
+      setError("");
+      setHistoryOffset(0);
+      setHistoryMounted(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
-  return <Box flexDirection="column" paddingX={1} gap={1}>
-    <Text bold color="cyan">BajajBot</Text>
-    <StatusBar config={config} sending={sending} />
-    {messages.length ? <MessageList messages={streamingReply ? [...messages, {
-      role: "assistant",
-      content: streamingReply,
-      timestamp: "streaming",
-    }] : messages} /> : <Text dimColor>Enter message. Ctrl+C exits.</Text>}
-    {error ? <Text color="red">{error}</Text> : null}
-    <InputBox value={input} sending={sending} />
-  </Box>;
+  function startNewChat(): void {
+    const fresh = createSession(session.model);
+    setSession(fresh);
+    setCompleted([]);
+    setTokens(null);
+    setError("");
+    setHistoryOffset(0);
+    setHistoryMounted(true);
+  }
+
+  function run(raw: string): void {
+    const trimmed = raw.trim();
+    const matched = matchCommand(trimmed);
+    if (!matched) {
+      void submit(trimmed);
+      return;
+    }
+    setInput("");
+    switch (matched.command.name) {
+      case "/help":
+        openOverlay("help");
+        break;
+      case "/model":
+        if (matched.arg) switchModel(matched.arg);
+        else openOverlay("model");
+        break;
+      case "/sessions":
+        openOverlay("sessions");
+        break;
+      case "/new":
+        startNewChat();
+        break;
+    }
+  }
+
+  return (
+    <Box flexDirection="column">
+      {historyMounted ? <MessageHistory key={session.id} messages={completed.slice(historyOffset)} /> : null}
+      {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
+      {overlay === "model" ? (
+        <ModelPicker config={config} onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }} />
+      ) : null}
+      {overlay === "sessions" ? (
+        <SessionPicker
+          sessions={listSessions()}
+          onSelect={(id) => {
+            closeOverlay();
+            if (id) resume(id);
+          }}
+        />
+      ) : null}
+      {!overlay ? (
+        <>
+          {showAuto ? <Autocomplete commands={suggestions} selected={autoSelected} /> : null}
+          {busy ? (
+            <Box marginTop={1}>
+              <Markdown content={streaming ?? ""} />
+            </Box>
+          ) : null}
+          {error ? <Text color={theme.danger}>✗ {error}</Text> : null}
+          <InputBox value={input} active={!busy} />
+          <StatusBar model={session.model} tokens={tokens} streaming={busy} />
+        </>
+      ) : null}
+    </Box>
+  );
 }
