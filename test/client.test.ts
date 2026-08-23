@@ -62,3 +62,63 @@ test("aborting the signal rejects the stream mid-flight", async () => {
   controller.abort();
   await assert.rejects(generator.next(), (error: unknown) => isAbortError(error));
 });
+
+test("streamChat accumulates fragmented tool_calls and reports them once", async () => {
+  const body = sseBody([
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_","arguments":""}}]}}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"file","arguments":"{\\"path\\""}}]}}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"a.ts\\"}"}}]}}]}',
+    "data: [DONE]",
+  ]);
+  const tokens: string[] = [];
+  const seen: unknown[] = [];
+  let capturedBody = "";
+  globalThis.fetch = (async (_url, init) => {
+    capturedBody = String(init?.body ?? "");
+    return new Response(body, { status: 200 });
+  }) as typeof fetch;
+
+  for await (const token of streamChat(config, [], {
+    tools: [{ type: "function", function: { name: "read_file", description: "", parameters: {} } }],
+    onToolCalls: (calls) => seen.push(calls),
+  })) {
+    tokens.push(token);
+  }
+
+  assert.equal(tokens.join(""), "");
+  assert.equal(seen.length, 1);
+  assert.deepEqual(seen[0], [{ id: "call_1", name: "read_file", args: '{"path":"a.ts"}' }]);
+  assert.match(capturedBody, /"tools":\[/);
+});
+
+test("assistant tool_calls and tool results round-trip through the API payload", async () => {
+  const tokens: string[] = [];
+  let capturedBody = "";
+  const body = sseBody(['data: {"choices":[{"delta":{"content":"ok"}}]}', "data: [DONE]"]);
+  globalThis.fetch = (async (_url, init) => {
+    capturedBody = String(init?.body ?? "");
+    return new Response(body, { status: 200 });
+  }) as typeof fetch;
+  for await (const token of streamChat(config, [
+    {
+      role: "assistant",
+      content: "",
+      timestamp: now(),
+      toolCalls: [{ id: "call_9", name: "run_command", args: '{"command":"ls"}' }],
+    },
+    { role: "tool", content: "file1\n", timestamp: now(), toolCallId: "call_9" },
+  ])) {
+    tokens.push(token);
+  }
+  const parsed = JSON.parse(capturedBody) as { messages: Array<Record<string, unknown>> };
+  assert.deepEqual(parsed.messages[0], {
+    role: "assistant",
+    content: null,
+    tool_calls: [{ id: "call_9", type: "function", function: { name: "run_command", arguments: '{"command":"ls"}' } }],
+  });
+  assert.deepEqual(parsed.messages[1], { role: "tool", tool_call_id: "call_9", content: "file1\n" });
+});
+
+function now(): string {
+  return new Date(0).toISOString();
+}

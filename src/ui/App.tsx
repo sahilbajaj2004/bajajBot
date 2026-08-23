@@ -3,12 +3,13 @@ import type { Config } from "../config/types.js";
 import { removeConfig } from "../config/store.js";
 import { isAbortError, streamChat, type Usage } from "../provider/client.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
-import type { Message, Session } from "../session/types.js";
+import type { Message, Session, ToolCall } from "../session/types.js";
+import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
+import type { ToolContext } from "../tools/types.js";
 import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { InputBox } from "./InputBox.js";
-import { Markdown } from "./Markdown.js";
-import { MessageList, blockHeight, visibleWindow } from "./MessageList.js";
+import { MessageList, scrolledWindow } from "./MessageList.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
 import { SessionPicker } from "./SessionPicker.js";
@@ -18,6 +19,22 @@ import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
 type OverlayKind = "model" | "sessions" | "help" | "logout" | null;
+
+interface ConfirmRequest {
+  title: string;
+  detail: string;
+  resolve: (allowed: boolean) => void;
+}
+
+const MAX_ROUNDS = 10;
+const MAX_TOOL_OUTPUT = 8_000;
+
+function tailLines(text: string, max: number): string {
+  if (max <= 0) return "";
+  const lines = text.split("\n");
+  const tail = lines.slice(-max);
+  return `${lines.length > max ? "…\n" : ""}${tail.join("\n")}`;
+}
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   useInput((_character, key) => {
@@ -60,6 +77,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const [session, setSession] = useState<Session>(initialSession);
   const [completed, setCompleted] = useState<Message[]>(initialSession.messages);
   const [input, setInput] = useState("");
+  const [cursor, setCursor] = useState(0);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [tokens, setTokens] = useState<number | null>(null);
@@ -67,9 +85,20 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const [sent, setSent] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [autoSelected, setAutoSelected] = useState(0);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [scrollOffset, setScrollOffset] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
+  const inputRef = useRef("");
+  const cursorRef = useRef(0);
+
+  function write(value: string, position: number): void {
+    inputRef.current = value;
+    cursorRef.current = Math.min(Math.max(position, 0), value.length);
+    setInput(inputRef.current);
+    setCursor(cursorRef.current);
+  }
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [size, setSize] = useState({ rows: stdout.rows ?? 24, columns: stdout.columns ?? 80 });
@@ -93,7 +122,34 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   useEffect(() => setAutoSelected(0), [input]);
 
   useInput((character, key) => {
+    if (key.ctrl && character?.toLowerCase() === "c") {
+      exit({ sessionId: session.id, createdAt: session.createdAt });
+      return;
+    }
+    if (confirmRequest) {
+      const request = confirmRequest;
+      setConfirmRequest(null);
+      if (character?.toLowerCase() === "y") request.resolve(true);
+      else request.resolve(false);
+      return;
+    }
     if (overlay) return;
+    if (key.pageUp) {
+      setScrollOffset((offset) => offset + Math.floor(rows * 0.7));
+      return;
+    }
+    if (key.pageDown) {
+      setScrollOffset((offset) => Math.max(0, offset - Math.floor(rows * 0.7)));
+      return;
+    }
+    if (key.home) {
+      setScrollOffset(Number.MAX_SAFE_INTEGER);
+      return;
+    }
+    if (key.end || key.escape && !busy) {
+      setScrollOffset(0);
+      return;
+    }
     if (busy) {
       if (key.escape) abortRef.current?.abort();
       return;
@@ -104,7 +160,18 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       return;
     }
     if (key.tab && showAuto) {
-      setInput(suggestions[autoSelected].name + " ");
+      const next = suggestions[autoSelected].name + " ";
+      write(next, next.length);
+      return;
+    }
+    if (key.leftArrow) {
+      const position = Math.max(0, cursorRef.current - 1);
+      if (position !== cursorRef.current) write(inputRef.current, position);
+      return;
+    }
+    if (key.rightArrow) {
+      const position = Math.min(inputRef.current.length, cursorRef.current + 1);
+      if (position !== cursorRef.current) write(inputRef.current, position);
       return;
     }
     if (key.upArrow) {
@@ -117,17 +184,27 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       applyHistory(1);
       return;
     }
-    if (key.backspace || key.delete) return setInput((value) => value.slice(0, -1));
+    if (key.backspace || key.delete) {
+      const position = cursorRef.current;
+      if (position === 0) return;
+      const value = inputRef.current;
+      write(value.slice(0, position - 1) + value.slice(position), position - 1);
+      return;
+    }
     if (key.ctrl || key.meta || !character) return;
     const clean = character.replace(/[\x00-\x1f\x7f]/g, "");
     const hasBreak = /[\r\n]/.test(character);
-    if (clean) setInput((value) => value + clean);
-    if (hasBreak) run(input + clean);
+    if (clean) {
+      const value = inputRef.current;
+      const position = cursorRef.current;
+      write(value.slice(0, position) + clean + value.slice(position), position + clean.length);
+    }
+    if (hasBreak) run(inputRef.current + clean);
   });
 
   function applyHistory(direction: -1 | 1) {
     const next = cycleHistory(sent, historyIndex, direction);
-    setInput(next.draft);
+    write(next.draft, next.draft.length);
     setHistoryIndex(next.index);
   }
 
@@ -139,8 +216,9 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   async function submit(explicit?: string): Promise<void> {
     const content = (explicit ?? input).trim();
     if (!content) return;
-    setInput("");
+    write("", 0);
     setError("");
+    setScrollOffset(0);
     rememberMessage(content);
     await send([
       ...session.messages,
@@ -152,44 +230,106 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     const base: Session = { ...session, messages };
     setCompleted(messages);
     setSession(base);
-    bufferRef.current = "";
-    setStreaming("");
     setError("");
+    setTokens(null);
     const controller = new AbortController();
     abortRef.current = controller;
-    let usage: Usage | undefined;
+    const toolCtx: ToolContext = {
+      cwd: process.cwd(),
+      confirm: (title, detail) =>
+        new Promise<boolean>((resolve) => setConfirmRequest({ title, detail, resolve })),
+    };
+    let convo = [...messages];
     let failure = "";
+    let usage: Usage | undefined;
+    let settled = false;
+
+    try {
+      for (let round = 0; round < MAX_ROUNDS && !controller.signal.aborted; round++) {
+        const calls = await streamRound(base.model, convo, controller, (value) => (usage = value));
+        if (!bufferRef.current && !calls?.length && !controller.signal.aborted) {
+          settled = true;
+          break;
+        }
+        const reply: Message = {
+          role: "assistant",
+          content: bufferRef.current,
+          timestamp: new Date().toISOString(),
+          ...(calls?.length ? { toolCalls: calls } : {}),
+        };
+        convo = [...convo, reply];
+        bufferRef.current = "";
+        setCompleted(convo);
+        setStreaming("");
+        if (!calls?.length || controller.signal.aborted) {
+          settled = true;
+          break;
+        }
+
+        for (const call of calls) {
+          const output = await executeTool({ name: call.name, args: call.args }, toolCtx);
+          convo = [
+            ...convo,
+            {
+              role: "tool",
+              content: output.length > MAX_TOOL_OUTPUT ? `${output.slice(0, MAX_TOOL_OUTPUT)}\n… truncated` : output,
+              timestamp: new Date().toISOString(),
+              toolCallId: call.id,
+            },
+          ];
+          setCompleted(convo);
+        }
+        setSession((previous) => ({ ...previous, messages: convo }));
+      }
+      if (!settled && !controller.signal.aborted) {
+        failure = `Stopped after ${MAX_ROUNDS} tool rounds.`;
+      }
+    } catch (cause) {
+      if (!isAbortError(cause)) failure = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      abortRef.current = null;
+    }
+
+    saveSession({ ...base, messages: convo, updatedAt: new Date().toISOString() });
+    setCompleted(convo);
+    setSession({ ...base, messages: convo });
+    setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
+    bufferRef.current = "";
+    setStreaming(null);
+    setError(failure);
+  }
+
+  async function streamRound(
+    model: string,
+    convo: Message[],
+    controller: AbortController,
+    onUsage: (value: Usage) => void,
+  ): Promise<ToolCall[] | undefined> {
+    bufferRef.current = "";
+    setStreaming("");
+    let received: ToolCall[] | undefined;
     const flush = setInterval(() => setStreaming(bufferRef.current), 50);
     try {
-      for await (const token of streamChat({ ...config, defaultModel: base.model }, messages, {
+      const payload: Message[] = [
+        { role: "system", content: systemPrompt(process.cwd()), timestamp: new Date().toISOString() },
+        ...convo,
+      ];
+      for await (const token of streamChat({ ...config, defaultModel: model }, payload, {
         signal: controller.signal,
-        onUsage: (value) => {
-          usage = value;
+        tools: toolSchemas(),
+        onUsage,
+        onToolCalls: (calls) => {
+          received = calls;
         },
       })) {
         bufferRef.current += token;
       }
     } catch (cause) {
-      if (!isAbortError(cause)) failure = cause instanceof Error ? cause.message : String(cause);
+      if (!isAbortError(cause)) throw cause;
     } finally {
       clearInterval(flush);
-      abortRef.current = null;
     }
-    finish(base, bufferRef.current, failure, usage);
-  }
-
-  function finish(base: Session, reply: string, failure: string, usage?: Usage): void {
-    const done = reply
-      ? [...base.messages, { role: "assistant" as const, content: reply, timestamp: new Date().toISOString() }]
-      : base.messages;
-    const next: Session = { ...base, messages: done, updatedAt: new Date().toISOString() };
-    saveSession(next);
-    setCompleted(done);
-    setSession(next);
-    setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
-    bufferRef.current = "";
-    setStreaming(null);
-    if (failure) setError(failure);
+    return received;
   }
 
   function openOverlay(kind: Exclude<OverlayKind, null>): void {
@@ -240,7 +380,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       void submit(trimmed);
       return;
     }
-    setInput("");
+    write("", 0);
     switch (matched.command.name) {
       case "/help":
         openOverlay("help");
@@ -261,12 +401,17 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     }
   }
 
-  const streamReserve = busy ? blockHeight(streaming ?? "", "assistant", columns) : 0;
-  const budget = Math.max(rows - 8 - streamReserve - (error ? 2 : 0), 3);
+  const streamTailLines = busy ? Math.min(Math.max(Math.floor(rows / 3), 4), 12) : 0;
+  const streamTail = tailLines(streaming ?? "", streamTailLines);
+  const chatBudget = Math.max(rows - 9 - streamTailLines - (confirmRequest ? 13 : 0) - (error ? 2 : 0), 4);
+  const visibleChat = scrolledWindow(completed, columns, chatBudget, scrollOffset);
+  const showChatBody = !overlay && (!fresh || confirmRequest !== null);
 
   return (
     <Box flexDirection="column">
-      {fresh && !overlay ? <Splash config={config} input={input} rows={rows} columns={columns} /> : null}
+      {fresh && !overlay && !confirmRequest ? (
+        <Splash config={config} input={input} cursor={cursor} rows={rows} columns={columns} />
+      ) : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
@@ -281,18 +426,39 @@ export function App({ config, session: initialSession }: { config: Config; sessi
           }}
         />
       ) : null}
-      {!overlay && !fresh ? (
+      {showChatBody ? (
         <Box height={rows} flexDirection="column">
-          <MessageList messages={visibleWindow(completed, columns, budget)} />
+          <Box flexDirection="column">
+            <MessageList messages={visibleChat.picked} />
+            {scrollOffset > 0 ? (
+              <Text dimColor>{"  ↑ scrollback — more above · pgDn / end returns to latest"}</Text>
+            ) : null}
+          </Box>
           <Box flexGrow={1} />
+          {confirmRequest ? (
+            <Box marginBottom={1}>
+              <Overlay title="Allow action?">
+                <Text bold>{confirmRequest.title}</Text>
+                <Text> </Text>
+                {confirmRequest.detail.split("\n").slice(0, 6).map((line, index) => (
+                  <Text key={`${index}-${line.slice(0, 8)}`} dimColor>
+                    {"  "}
+                    {line.length > 100 ? `${line.slice(0, 100)}…` : line}
+                  </Text>
+                ))}
+                <Text> </Text>
+                <Text dimColor>{"  "}y allow · n / esc deny</Text>
+              </Overlay>
+            </Box>
+          ) : null}
           {showAuto ? <Autocomplete commands={suggestions} selected={autoSelected} /> : null}
-          {busy ? (
+          {busy && streamTail.trim() ? (
             <Box marginTop={1}>
-              <Markdown content={streaming ?? ""} />
+              <Text dimColor>{streamTail}</Text>
             </Box>
           ) : null}
           {error ? <Text color={theme.danger}>✗ {error}</Text> : null}
-          <InputBox value={input} active={!busy} />
+          <InputBox value={input} cursor={cursor} active={!busy} />
           <StatusBar model={session.model} tokens={tokens} streaming={busy} />
         </Box>
       ) : null}

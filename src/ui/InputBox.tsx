@@ -1,19 +1,30 @@
 import { Box, Text } from "ink";
 import { theme } from "./theme.js";
 
-export function InputBox({ value, active }: { value: string; active: boolean }) {
+export function InputBox({ value, cursor, active }: { value: string; cursor: number; active: boolean }) {
+  if (!active) {
+    return (
+      <Box borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text> </Text>
+      </Box>
+    );
+  }
+  const position = Math.min(Math.max(cursor, 0), value.length);
+  const before = value.slice(0, position);
+  const at = value.slice(position, position + 1);
   return (
-    <Box borderStyle="round" borderColor={active ? theme.accent : "gray"} paddingX={1}>
-      {value ? (
+    <Box borderStyle="round" borderColor={theme.accent} paddingX={1}>
+      {value || at ? (
         <Text>
-          {value}
-          {active ? <Text inverse> </Text> : null}
+          {before}
+          {at ? <Text inverse>{at}</Text> : <Text inverse> </Text>}
+          {value.slice(position + (at ? 1 : 0))}
         </Text>
       ) : (
-        <>
-          <Text dimColor>{active ? "Type a message… (/ for commands)" : ""}</Text>
-          {active ? <Text inverse> </Text> : null}
-        </>
+        <Text>
+          <Text dimColor>Type a message… (/ for commands)</Text>
+          <Text inverse> </Text>
+        </Text>
       )}
     </Box>
   );

@@ -13,9 +13,10 @@ const FEATURES: Array<[string, string]> = [
   ["/new", "wipe the slate and start fresh"],
 ];
 
-export function Splash({ config, input, rows, columns }: { config: Config; input: string; rows: number; columns: number }) {
+export function Splash({ config, input, cursor, rows, columns }: { config: Config; input: string; cursor: number; rows: number; columns: number }) {
   const wide = columns >= 62;
   const boxWidth = Math.min(64, Math.max(columns - 2, 20));
+  const position = Math.min(Math.max(cursor, 0), input.length);
   return (
     <Box height={Math.max(rows - 1, 8)} flexDirection="column" justifyContent="center" alignItems="center" rowGap={1}>
       {wide ? (
@@ -44,8 +45,9 @@ export function Splash({ config, input, rows, columns }: { config: Config; input
       <Box marginTop={1} flexDirection="column" width={boxWidth} borderStyle="round" borderColor={theme.accent} paddingX={1}>
         {input ? (
           <Text>
-            {input}
-            <Text inverse> </Text>
+            {input.slice(0, position)}
+            {position < input.length ? <Text inverse>{input.slice(position, position + 1)}</Text> : <Text inverse> </Text>}
+            {input.slice(position + 1)}
           </Text>
         ) : (
           <Text dimColor>Ask anything… "/help"</Text>

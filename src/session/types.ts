@@ -1,7 +1,15 @@
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: string;
+}
+
 export interface Message {
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
   content: string;
   timestamp: string;
+  toolCalls?: ToolCall[];
+  toolCallId?: string;
 }
 
 export interface Session {
