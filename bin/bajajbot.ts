@@ -7,6 +7,8 @@ import { loadSession } from "../src/session/history.js";
 import { registerSessionsCommand } from "../src/commands/sessionsCmd.js";
 import { registerConfigCommands } from "../src/commands/configCmd.js";
 
+process.title = "bajajbot";
+
 function packageVersion(): string {
   let dir = dirname(process.argv[1] ?? ".");
   for (let i = 0; i < 5; i++) {

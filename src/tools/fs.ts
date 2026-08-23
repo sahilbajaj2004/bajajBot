@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { ToolArgs, ToolContext, ToolDef } from "./types.js";
 
 const MAX_READ = 60_000;
@@ -8,7 +8,8 @@ const MAX_LIST = 500;
 function safePath(ctx: ToolContext, target: string | undefined): string {
   const root = resolve(ctx.cwd);
   const full = resolve(root, target && target.trim() ? target : ".");
-  if (full !== root && !full.startsWith(root + "/")) throw new Error("Path escapes the project directory.");
+  const rel = relative(root, full);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("Path escapes the project directory.");
   return full;
 }
 
