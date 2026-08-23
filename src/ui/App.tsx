@@ -1,6 +1,6 @@
-import { Box, Text, useInput } from "ink";
-import { useEffect, useRef, useState } from "react";
+import { Box, Text, useApp, useInput } from "ink";import { useEffect, useRef, useState } from "react";
 import type { Config } from "../config/types.js";
+import { removeConfig } from "../config/store.js";
 import { isAbortError, streamChat, type Usage } from "../provider/client.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
 import type { Message, Session } from "../session/types.js";
@@ -16,7 +16,7 @@ import { StatusBar } from "./StatusBar.js";
 import { theme } from "./theme.js";
 import { cycleHistory } from "./history.js";
 
-type OverlayKind = "model" | "sessions" | "help" | null;
+type OverlayKind = "model" | "sessions" | "help" | "logout" | null;
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   useInput((_character, key) => {
@@ -32,6 +32,25 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
         </Text>
       ))}
       <Text dimColor>{"  "}esc / enter close</Text>
+    </Overlay>
+  );
+}
+
+function LogoutDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
+  useInput((character, key) => {
+    if (key.escape) return onClose();
+    if (character?.toLowerCase() === "y") return onConfirm();
+    if (key.return || character?.toLowerCase() === "n") onClose();
+  });
+  return (
+    <Overlay title="Log out">
+      <Text>This deletes ~/.bajajbot (config + all sessions).</Text>
+      <Text> </Text>
+      <Text>
+        Are you sure? <Text bold>y</Text>
+        <Text dimColor>/n</Text>
+      </Text>
+      <Text dimColor>{"  "}y confirm · esc cancel</Text>
     </Overlay>
   );
 }
@@ -52,6 +71,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
+  const { exit } = useApp();
 
   const busy = streaming !== null;
   const suggestions = busy || overlay ? [] : filterCommands(input);
@@ -203,6 +223,11 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     setHistoryMounted(true);
   }
 
+  function logout(): void {
+    const removed = removeConfig();
+    exit(removed ? "All BajajBot data removed. Run `bajajbot` to set up again." : "Nothing to remove.");
+  }
+
   function run(raw: string): void {
     const trimmed = raw.trim();
     const matched = matchCommand(trimmed);
@@ -225,6 +250,9 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       case "/new":
         startNewChat();
         break;
+      case "/logout":
+        openOverlay("logout");
+        break;
     }
   }
 
@@ -232,6 +260,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     <Box flexDirection="column">
       {historyMounted ? <MessageHistory key={session.id} messages={completed.slice(historyOffset)} /> : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
+      {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
         <ModelPicker config={config} onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }} />
       ) : null}

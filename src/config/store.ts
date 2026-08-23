@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "./types.js";
@@ -18,4 +18,10 @@ export function loadConfig(): Config {
 export function saveConfig(config: Config): void {
   mkdirSync(join(appDir(), "sessions"), { recursive: true });
   writeFileSync(configPath(), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function removeConfig(): boolean {
+  if (!existsSync(appDir())) return false;
+  rmSync(appDir(), { recursive: true, force: true });
+  return true;
 }

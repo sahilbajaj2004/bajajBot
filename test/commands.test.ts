@@ -3,7 +3,14 @@ import { test } from "node:test";
 import { filterCommands, matchCommand } from "../src/ui/commands.js";
 
 test("filterCommands matches command prefixes", () => {
-  assert.deepEqual(filterCommands("/").map((command) => command.name), ["/help", "/model", "/sessions", "/new"]);
+  assert.deepEqual(filterCommands("/").map((command) => command.name), [
+    "/help",
+    "/model",
+    "/sessions",
+    "/new",
+    "/logout",
+  ]);
+  assert.deepEqual(filterCommands("/lo").map((command) => command.name), ["/logout"]);
   assert.deepEqual(filterCommands("/mo").map((command) => command.name), ["/model"]);
   assert.deepEqual(filterCommands("/model").map((command) => command.name), ["/model"]);
 });

@@ -8,6 +8,7 @@ export const COMMANDS: CommandDef[] = [
   { name: "/model", description: "Switch model (no arg opens picker)" },
   { name: "/sessions", description: "Resume a saved chat" },
   { name: "/new", description: "Start a new chat" },
+  { name: "/logout", description: "Delete all config and sessions" },
 ];
 
 export function filterCommands(input: string): CommandDef[] {

@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { loadConfig, saveConfig } from "../config/store.js";
+import { loadConfig, saveConfig, removeConfig } from "../config/store.js";
 import type { Config } from "../config/types.js";
 
 const openRouterUrl = "https://openrouter.ai/api/v1";
@@ -27,6 +27,23 @@ export function registerConfigCommands(program: Command): void {
     const { apiKey, ...config } = loadConfig();
     console.log(JSON.stringify({ ...config, apiKey: maskApiKey(apiKey) }, null, 2));
   });
+
+  program
+    .command("logout")
+    .description("Remove all BajajBot data (config and sessions)")
+    .action(async () => {
+      const prompts = createInterface({ input, output });
+      try {
+        const answer = await prompts.question("Delete ~/.bajajbot (config + all sessions)? [y/N] ");
+        if (answer.trim().toLowerCase() !== "y") {
+          console.log("Aborted.");
+          return;
+        }
+        console.log(removeConfig() ? "All BajajBot data removed." : "Nothing to remove.");
+      } finally {
+        prompts.close();
+      }
+    });
 }
 
 export async function initConfig(): Promise<void> {

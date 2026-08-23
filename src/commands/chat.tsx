@@ -12,5 +12,8 @@ export async function startChat(session?: Session): Promise<void> {
     await initConfig();
   }
   const config = loadConfig();
-  await render(createElement(App, { config, session: session ?? createSession(config.defaultModel) })).waitUntilExit();
+  const message = await render(
+    createElement(App, { config, session: session ?? createSession(config.defaultModel) }),
+  ).waitUntilExit();
+  if (typeof message === "string") console.log(message);
 }
