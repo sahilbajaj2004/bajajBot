@@ -9,7 +9,7 @@ export function StatusBar({ model, tokens, streaming }: { model: string; tokens:
       <Box borderStyle="single" borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" />
       <Box justifyContent="space-between" marginTop={0}>
         <Text>
-          <Text bold color={theme.accent}>█▀█ </Text>
+          <Text bold color={theme.accent}>Welcome to </Text>
           <Text bold>bajajbot</Text>
           <Text dimColor> · {model}</Text>
         </Text>

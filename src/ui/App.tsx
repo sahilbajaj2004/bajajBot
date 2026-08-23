@@ -1,4 +1,5 @@
-import { Box, Text, useApp, useInput, useStdout } from "ink";import { useEffect, useRef, useState } from "react";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Config } from "../config/types.js";
 import { removeConfig } from "../config/store.js";
 import { isAbortError, streamChat, type Usage } from "../provider/client.js";
@@ -9,7 +10,7 @@ import type { ToolContext } from "../tools/types.js";
 import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { InputBox } from "./InputBox.js";
-import { MessageList, scrolledWindow } from "./MessageList.js";
+import { ChatViewport, buildChatLines } from "./MessageList.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
 import { SessionPicker } from "./SessionPicker.js";
@@ -92,6 +93,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const bufferRef = useRef("");
   const inputRef = useRef("");
   const cursorRef = useRef(0);
+  const scrolledRef = useRef(false);
 
   function write(value: string, position: number): void {
     inputRef.current = value;
@@ -135,14 +137,16 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     }
     if (overlay) return;
     if (key.pageUp) {
-      setScrollOffset((offset) => offset + Math.floor(rows * 0.7));
+      scrolledRef.current = true;
+      wheelUp();
       return;
     }
     if (key.pageDown) {
-      setScrollOffset((offset) => Math.max(0, offset - Math.floor(rows * 0.7)));
+      wheelDown();
       return;
     }
     if (key.home) {
+      scrolledRef.current = true;
       setScrollOffset(Number.MAX_SAFE_INTEGER);
       return;
     }
@@ -219,6 +223,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     write("", 0);
     setError("");
     setScrollOffset(0);
+    scrolledRef.current = false;
     rememberMessage(content);
     await send([
       ...session.messages,
@@ -293,6 +298,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     saveSession({ ...base, messages: convo, updatedAt: new Date().toISOString() });
     setCompleted(convo);
     setSession({ ...base, messages: convo });
+    if (!scrolledRef.current) setScrollOffset(0);
     setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
     bufferRef.current = "";
     setStreaming(null);
@@ -403,9 +409,22 @@ export function App({ config, session: initialSession }: { config: Config; sessi
 
   const streamTailLines = busy ? Math.min(Math.max(Math.floor(rows / 3), 4), 12) : 0;
   const streamTail = tailLines(streaming ?? "", streamTailLines);
-  const chatBudget = Math.max(rows - 9 - streamTailLines - (confirmRequest ? 13 : 0) - (error ? 2 : 0), 4);
-  const visibleChat = scrolledWindow(completed, columns, chatBudget, scrollOffset);
+  const chat = useMemo(() => buildChatLines(completed, columns), [completed, columns]);
+  const chatBudget = Math.max(rows - 10 - streamTailLines - (confirmRequest ? 13 : 0) - (error ? 3 : 0), 5);
+  const maxOffset = Math.max(0, chat.length - chatBudget);
+  const offset = Math.min(scrollOffset, maxOffset);
+  const visibleLines = chat.slice(
+    Math.max(0, chat.length - offset - chatBudget),
+    Math.max(0, chat.length - offset),
+  );
   const showChatBody = !overlay && (!fresh || confirmRequest !== null);
+
+  const page = Math.max(Math.floor(rows * 0.7), 1);
+  const wheelUp = (): void => {
+    scrolledRef.current = true;
+    setScrollOffset((value) => value + page);
+  };
+  const wheelDown = (): void => setScrollOffset((value) => Math.max(0, value - page));
 
   return (
     <Box flexDirection="column">
@@ -428,12 +447,10 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       ) : null}
       {showChatBody ? (
         <Box height={rows} flexDirection="column">
-          <Box flexDirection="column">
-            <MessageList messages={visibleChat.picked} />
-            {scrollOffset > 0 ? (
-              <Text dimColor>{"  ↑ scrollback — more above · pgDn / end returns to latest"}</Text>
-            ) : null}
-          </Box>
+          <ChatViewport lines={visibleLines} />
+          {offset > 0 ? (
+            <Text dimColor>{`  ↑ ${offset} more lines above · pgDn / end returns to latest`}</Text>
+          ) : null}
           <Box flexGrow={1} />
           {confirmRequest ? (
             <Box marginBottom={1}>
