@@ -1,11 +1,11 @@
 {
   "name": "bajajbot",
-  "version": "0.1.1",
+  "version": "0.2.1",
   "description": "Terminal AI chat client",
   "author": "Sahil Bajaj <Sahilbajaj2004@gmail.com>",
   "type": "module",
   "bin": {
-    "bajajbot": "./dist/bin/bajajbot.js"
+    "bajajbot": "dist/bin/bajajbot.js"
   },
   "scripts": {
     "build": "tsc",
@@ -28,5 +28,9 @@
     "@types/react": "^19.2.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }
