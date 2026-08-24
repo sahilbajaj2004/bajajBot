@@ -17,10 +17,10 @@ export async function startChat(session?: Session): Promise<void> {
   }
   const config = loadConfig();
   const mouse = createMouseStdin(process.stdin as NodeJS.ReadStream & { isTTY?: boolean });
-  if (process.stdout.isTTY) process.stdout.write("\x1b[?1000h\x1b[?1006h");
+  if (process.stdout.isTTY) process.stdout.write("\x1b[?1002h\x1b[?1006h");
   try {
     const result = (await render(
-      createElement(App, { config, session: session ?? createSession(config.defaultModel) }),
+      createElement(App, { config, session: session ?? createSession(config.defaultModel), mouse }),
       { stdin: mouse.stream as unknown as NodeJS.ReadStream, exitOnCtrlC: false },
     ).waitUntilExit()) as string | ExitSummary | undefined;
     if (typeof result === "string") {
@@ -29,7 +29,7 @@ export async function startChat(session?: Session): Promise<void> {
       printGoodbye(result);
     }
   } finally {
-    if (process.stdout.isTTY) process.stdout.write("\x1b[?1006l\x1b[?1000l");
+    if (process.stdout.isTTY) process.stdout.write("\x1b[?1002l\x1b[?1006l\x1b[?1000l");
     mouse.cleanup();
   }
 }

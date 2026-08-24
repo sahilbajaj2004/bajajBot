@@ -3,10 +3,22 @@ import { Box, Text } from "ink";
 import type { Message } from "../session/types.js";
 import { theme } from "./theme.js";
 import { renderMarkdown } from "./Markdown.js";
+import { segmentLine } from "./select.js";
 
 export interface ChatLine {
   key: string;
   node: ReactNode;
+  /** Plain (ANSI-stripped) text of this line, used for selection + copy. */
+  text: string;
+  /** Index of the message this line belongs to (within the visible message list). */
+  messageIndex: number;
+}
+
+/** Column range of a line covered by an active selection (undefined = not covered). */
+export interface Highlight {
+  left: number;
+  right: number;
+  full: boolean;
 }
 
 function wrapText(text: string, width: number): string[] {
@@ -54,19 +66,21 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
   const inner = Math.max(columns - 6, 16);
   const lines: ChatLine[] = [];
   let seq = 0;
-  const push = (node: ReactNode): void => {
-    lines.push({ key: `l${seq}`, node });
+  let currentMessage = 0;
+  const push = (node: ReactNode, text: string): void => {
+    lines.push({ key: `l${seq}`, node, text, messageIndex: currentMessage });
     seq += 1;
   };
 
   const visible = messages.filter((message) => message.role !== "system");
   visible.forEach((message, index) => {
-    if (index > 0) push(<Text> </Text>);
+    currentMessage = index;
+    if (index > 0) push(<Text> </Text>, " ");
 
     if (message.role === "user") {
       const wrapped = wrapText(message.content, inner);
       const contentWidth = Math.max(...wrapped.map((line) => line.length), 1);
-      push(<Text color="gray">{`╭${"─".repeat(contentWidth + 2)}╮`}</Text>);
+      push(<Text color="gray">{`╭${"─".repeat(contentWidth + 2)}╮`}</Text>, `╭${"─".repeat(contentWidth + 2)}╮`);
       for (const line of wrapped) {
         push(
           <Text>
@@ -74,9 +88,10 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
             <Text>{line.padEnd(contentWidth)}</Text>
             <Text color="gray">{" │"}</Text>
           </Text>,
+          `│ ${line.padEnd(contentWidth)} │`,
         );
       }
-      push(<Text color="gray">{`╰${"─".repeat(contentWidth + 2)}╯`}</Text>);
+      push(<Text color="gray">{`╰${"─".repeat(contentWidth + 2)}╯`}</Text>, `╰${"─".repeat(contentWidth + 2)}╯`);
       return;
     }
 
@@ -84,28 +99,32 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
       const failed =
         message.content.startsWith("Error:") || message.content === "User denied this action.";
       const first = message.content.split("\n").find((entry) => entry.trim().length > 0) ?? "(no output)";
+      const plain = `  ↳ ${failed ? "✗" : "✓"} ${first.slice(0, 100)}`;
       push(
         <Text dimColor>
           {"  ↳ "}
           <Text color={failed ? theme.danger : undefined}>{failed ? "✗" : "✓"}</Text> {first.slice(0, 100)}
         </Text>,
+        plain,
       );
       return;
     }
 
     for (const call of message.toolCalls ?? []) {
       const preview = argPreview(call);
+      const plain = `  ⚙ ${call.name}${preview ? ` ${preview}` : ""}`;
       push(
         <Text dimColor>
           {"  ⚙ "}
           {call.name}
           {preview ? ` ${preview}` : ""}
         </Text>,
+        plain,
       );
     }
     if (message.content) {
       for (const line of renderMarkdown(message.content, Math.max(columns - 4, 20)).split("\n")) {
-        push(<Text>{line.length > 0 ? line : " "}</Text>);
+        push(<Text>{line.length > 0 ? line : " "}</Text>, line.length > 0 ? line : " ");
       }
     }
   });
@@ -113,12 +132,36 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
   return lines;
 }
 
-export function ChatViewport({ lines }: { lines: ChatLine[] }) {
+export function ChatViewport({
+  lines,
+  highlight,
+  width,
+}: {
+  lines: ChatLine[];
+  highlight?: Record<number, Highlight>;
+  width: number;
+}) {
   return (
     <Box flexDirection="column">
-      {lines.map((line) => (
-        <Fragment key={line.key}>{line.node}</Fragment>
-      ))}
+      {lines.map((line, index) => {
+        const range = highlight?.[index];
+        if (!range) return <Fragment key={line.key}>{line.node}</Fragment>;
+        return (
+          <Fragment key={line.key}>
+            {segmentLine(line.text, range.left, range.right, width).map((segment, part) =>
+              segment.hl ? (
+                <Text key={part} backgroundColor={theme.accent} color="black">
+                  {segment.text}
+                </Text>
+              ) : (
+                <Text key={part} dimColor={!range.full || undefined}>
+                  {segment.text}
+                </Text>
+              ),
+            )}
+          </Fragment>
+        );
+      })}
     </Box>
   );
 }

@@ -6,9 +6,10 @@ import { BOT_START, LOGO_BOTTOM, LOGO_TOP } from "./logo.js";
 
 const FEATURES: Array<[string, string]> = [
   ["streaming", "replies appear live, rendered as markdown"],
-  ["/model", "pick any OpenRouter or self-hosted model"],
+  ["/model", "pick any model — even unlisted ones"],
+  ["/retry · /undo", "regenerate or remove the last exchange"],
+  ["/search · /export", "find old answers, save the chat"],
   ["/sessions", "resume a saved conversation"],
-  ["/new", "wipe the slate and start fresh"],
 ];
 
 export function Splash({ config, input, cursor, rows, columns }: { config: Config; input: string; cursor: number; rows: number; columns: number }) {

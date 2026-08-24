@@ -6,7 +6,13 @@ export interface CommandDef {
 export const COMMANDS: CommandDef[] = [
   { name: "/help", description: "Show available commands" },
   { name: "/model", description: "Switch model (no arg opens picker)" },
+  { name: "/copy", description: "Copy last assistant reply to clipboard" },
+  { name: "/retry", description: "Regenerate the last assistant reply" },
+  { name: "/undo", description: "Remove the last exchange" },
+  { name: "/export", description: "Save chat to a file (arg: json)" },
+  { name: "/search", description: "Find text in this chat (jump to match)" },
   { name: "/sessions", description: "Resume a saved chat" },
+  { name: "/profile", description: "Switch saved provider profile" },
   { name: "/new", description: "Start a new chat" },
   { name: "/logout", description: "Delete all config and sessions" },
 ];

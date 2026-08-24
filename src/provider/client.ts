@@ -52,6 +52,8 @@ export async function* streamChat(config: Config, messages: Message[], options: 
     messages: messages.map(toApiMessage),
     stream: true,
   };
+  if (typeof config.temperature === "number") body.temperature = config.temperature;
+  if (typeof config.maxTokens === "number") body.max_tokens = config.maxTokens;
   if (options.tools?.length) body.tools = options.tools;
 
   const response = await fetch(`${normalizeBaseUrl(config.baseUrl)}/chat/completions`, {

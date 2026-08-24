@@ -1,8 +1,15 @@
 import { PassThrough } from "node:stream";
 
+export type MouseInput =
+  | { type: "press"; button: number; x: number; y: number }
+  | { type: "drag"; button: number; x: number; y: number }
+  | { type: "release"; button: number; x: number; y: number }
+  | { type: "wheel"; direction: "up" | "down"; x: number; y: number };
+
 export interface MouseStdin {
   stream: PassThrough;
   cleanup: () => void;
+  on: (listener: (event: MouseInput) => void) => () => void;
 }
 
 /**
@@ -14,7 +21,20 @@ export interface MouseStdin {
  * Ink calls setEncoding/ref/unref/setRawMode on whatever stream it is
  * given, so all of those are forwarded to the real TTY.
  */
-export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }): MouseStdin {
+export function createMouseStdin(
+  real: NodeJS.ReadStream & { isTTY?: boolean },
+): MouseStdin {
+  const listeners = new Set<(event: MouseInput) => void>();
+  const emit = (event: MouseInput): void => {
+    for (const listener of listeners) {
+      try {
+        listener(event);
+      } catch {
+        // a broken listener must not kill input handling
+      }
+    }
+  };
+
   const stream = new PassThrough() as PassThrough & {
     isTTY: boolean;
     isRaw: boolean;
@@ -92,11 +112,26 @@ export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }):
         }
         const end = Math.min(...ends);
         const body = buffer.subarray(3, end).toString("ascii");
-        const button = parseInt(body.split(";")[0] ?? "", 10);
-        if (buffer[end] === 0x4d && (button === 64 || button === 65)) {
-          stream.write(button === 64 ? "\x1b[5~" : "\x1b[6~");
-        }
         buffer = buffer.subarray(end + 1);
+        const fields = body.split(";");
+        const code = parseInt(fields[0] ?? "", 10);
+        const x = parseInt(fields[1] ?? "", 10);
+        const y = parseInt(fields[2] ?? "", 10);
+        if (!Number.isFinite(code) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+        const released = end === releaseEnd;
+        const button = code & 3;
+        if (code >= 64 && code <= 67 && !released) {
+          if (code === 64 || code === 65) {
+            stream.write(code === 64 ? "\x1b[5~" : "\x1b[6~");
+            emit({ type: "wheel", direction: code === 64 ? "up" : "down", x, y });
+          }
+        } else if (released) {
+          emit({ type: "release", button, x, y });
+        } else if (code >= 32 && code < 64) {
+          emit({ type: "drag", button, x, y });
+        } else {
+          emit({ type: "press", button, x, y });
+        }
         continue;
       }
 
@@ -106,6 +141,11 @@ export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }):
         const code = buffer[3];
         if (code === 96) stream.write("\x1b[5~");
         if (code === 97) stream.write("\x1b[6~");
+        const button = code & 3;
+        const x = buffer[4] - 32;
+        const y = buffer[5] - 32;
+        if (code >= 96) emit({ type: "wheel", direction: code === 96 ? "up" : "down", x, y });
+        else if (button < 3 && x > 0 && y > 0) emit({ type: "press", button, x, y });
         buffer = buffer.subarray(6);
         continue;
       }
@@ -134,8 +174,13 @@ export function createMouseStdin(real: NodeJS.ReadStream & { isTTY?: boolean }):
     stream,
     cleanup: () => {
       real.off("data", feed);
+      listeners.clear();
       if (escTimer !== undefined) clearTimeout(escTimer);
       buffer = Buffer.alloc(0);
+    },
+    on: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
   };
 }

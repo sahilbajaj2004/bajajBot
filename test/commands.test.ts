@@ -6,11 +6,22 @@ test("filterCommands matches command prefixes", () => {
   assert.deepEqual(filterCommands("/").map((command) => command.name), [
     "/help",
     "/model",
+    "/copy",
+    "/retry",
+    "/undo",
+    "/export",
+    "/search",
     "/sessions",
+    "/profile",
     "/new",
     "/logout",
   ]);
+  assert.deepEqual(filterCommands("/pro").map((command) => command.name), ["/profile"]);
   assert.deepEqual(filterCommands("/lo").map((command) => command.name), ["/logout"]);
+  assert.deepEqual(filterCommands("/co").map((command) => command.name), ["/copy"]);
+  assert.deepEqual(filterCommands("/re").map((command) => command.name), ["/retry"]);
+  assert.deepEqual(filterCommands("/un").map((command) => command.name), ["/undo"]);
+  assert.deepEqual(filterCommands("/sea").map((command) => command.name), ["/search"]);
   assert.deepEqual(filterCommands("/mo").map((command) => command.name), ["/model"]);
   assert.deepEqual(filterCommands("/model").map((command) => command.name), ["/model"]);
 });

@@ -27,6 +27,107 @@ export function registerConfigCommands(program: Command): void {
     console.log(`Default model: ${defaultModel}`);
   });
 
+  config
+    .command("set <key> <value...>")
+    .description("Set temperature (0-2), maxTokens (int) or systemPrompt")
+    .action(async (key: string, value: string[]) => {
+      const current = await ensureConfig();
+      const text = value.join(" ").trim();
+      if (key === "temperature") {
+        const temperature = Number(text);
+        if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+          console.log("temperature must be a number between 0 and 2.");
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, temperature });
+        console.log(`temperature = ${temperature}`);
+      } else if (key === "maxTokens") {
+        const maxTokens = Number(text);
+        if (!Number.isInteger(maxTokens) || maxTokens <= 0) {
+          console.log("maxTokens must be a positive integer.");
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, maxTokens });
+        console.log(`maxTokens = ${maxTokens}`);
+      } else if (key === "systemPrompt") {
+        if (!text) {
+          console.log("Usage: bajajbot config set systemPrompt <text> (or `config unset systemPrompt`)");
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, systemPrompt: text });
+        console.log(`systemPrompt = "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`);
+      } else {
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt`);
+        process.exitCode = 1;
+      }
+    });
+
+  config
+    .command("unset <key>")
+    .description("Clear temperature, maxTokens or systemPrompt")
+    .action(async (key: string) => {
+      const current = await ensureConfig();
+      if (key !== "temperature" && key !== "maxTokens" && key !== "systemPrompt") {
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt`);
+        process.exitCode = 1;
+        return;
+      }
+      const next = { ...current } as Partial<Config>;
+      delete next[key];
+      saveConfig(next as Config);
+      console.log(`${key} cleared.`);
+    });
+
+  const profile = program.command("profile").description("Save and switch provider profiles");
+
+  profile.command("save <name>").description("Save current provider settings as a profile").action(async (name: string) => {
+    const current = await ensureConfig();
+    const profiles = { ...(current.profiles ?? {}) };
+    profiles[name] = { provider: current.provider, apiKey: current.apiKey, baseUrl: current.baseUrl, defaultModel: current.defaultModel };
+    saveConfig({ ...current, profiles });
+    console.log(`Profile "${name}" saved (${current.provider} · ${current.defaultModel}).`);
+  });
+
+  profile.command("use <name>").description("Switch to a saved profile").action(async (name: string) => {
+    const current = await ensureConfig();
+    const saved = current.profiles?.[name];
+    if (!saved) {
+      console.log(`No profile named "${name}". Saved: ${Object.keys(current.profiles ?? {}).join(", ") || "(none)"}`);
+      process.exitCode = 1;
+      return;
+    }
+    saveConfig({ ...saved, profiles: current.profiles });
+    console.log(`Switched to profile "${name}" (${saved.provider} · ${saved.defaultModel}).`);
+  });
+
+  profile.command("remove <name>").description("Delete a saved profile").action(async (name: string) => {
+    const current = await ensureConfig();
+    if (!current.profiles?.[name]) {
+      console.log(`No profile named "${name}".`);
+      process.exitCode = 1;
+      return;
+    }
+    const profiles = { ...current.profiles };
+    delete profiles[name];
+    saveConfig({ ...current, profiles });
+    console.log(`Profile "${name}" removed.`);
+  });
+
+  profile.command("list").description("List saved profiles").action(async () => {
+    const current = await ensureConfig();
+    const entries = Object.entries(current.profiles ?? {});
+    if (entries.length === 0) {
+      console.log("No profiles saved. Use `bajajbot profile save <name>`.");
+      return;
+    }
+    for (const [name, saved] of entries) {
+      console.log(`${name.padEnd(16)} ${saved.provider.padEnd(11)} ${saved.defaultModel}`);
+    }
+  });
+
   config.command("show").description("Show configuration").action(async () => {
     const { apiKey, ...config } = await ensureConfig();
     console.log(JSON.stringify({ ...config, apiKey: maskApiKey(apiKey) }, null, 2));

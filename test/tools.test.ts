@@ -14,7 +14,7 @@ const ctx: ToolContext = {
 
 test("tool schemas expose every tool with a function signature", () => {
   const names = toolSchemas().map((schema) => schema.function.name);
-  assert.deepEqual(names, ["read_file", "list_dir", "write_file", "edit_file", "delete_path", "run_command"]);
+  assert.deepEqual(names, ["read_file", "list_dir", "write_file", "edit_file", "delete_path", "run_command", "fetch_url"]);
 });
 
 test("write_file creates parents and read_file returns contents", async () => {

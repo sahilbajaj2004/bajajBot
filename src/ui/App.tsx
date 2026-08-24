@@ -1,26 +1,35 @@
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Config } from "../config/types.js";
-import { removeConfig } from "../config/store.js";
+import { removeConfig, saveConfig } from "../config/store.js";
 import { isAbortError, streamChat, type Usage } from "../provider/client.js";
+import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
+import { toMarkdown } from "../session/export.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
 import type { Message, Session, ToolCall } from "../session/types.js";
 import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
 import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
+import { copyToClipboard } from "./clipboard.js";
 import { InputBox } from "./InputBox.js";
-import { ChatViewport, buildChatLines } from "./MessageList.js";
+import { ChatViewport, buildChatLines, type Highlight } from "./MessageList.js";
+import type { MouseStdin } from "./mouse.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
+import { ProfilePicker } from "./ProfilePicker.js";
+import { SearchDialog, type SearchMatch } from "./SearchDialog.js";
 import { SessionPicker } from "./SessionPicker.js";
+import { extractSelectedText, normalizeRect, type Rect } from "./select.js";
 import { StatusBar } from "./StatusBar.js";
 import { sessionTitle, setTerminalTitle } from "./title.js";
 import { DEFAULT_COLUMNS, DEFAULT_ROWS, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
-type OverlayKind = "model" | "sessions" | "help" | "logout" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "help" | "logout" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -74,7 +83,26 @@ function LogoutDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: 
   );
 }
 
-export function App({ config, session: initialSession }: { config: Config; session: Session }) {
+interface DragState {
+  ax: number;
+  ay: number;
+  texts: string[];
+  top: number;
+  count: number;
+  moved: boolean;
+}
+
+export function App({
+  config,
+  session: initialSession,
+  mouse,
+}: {
+  config: Config;
+  session: Session;
+  mouse?: MouseStdin;
+}) {
+  const [activeConfig, setActiveConfig] = useState<Config>(config);
+  const [profileName, setProfileName] = useState("");
   const [session, setSession] = useState<Session>(initialSession);
   const [completed, setCompleted] = useState<Message[]>(initialSession.messages);
   const [input, setInput] = useState("");
@@ -82,19 +110,32 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [tokens, setTokens] = useState<number | null>(null);
+  const [cost, setCost] = useState<number | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(null);
   const [sent, setSent] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [autoSelected, setAutoSelected] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [search, setSearch] = useState<{ query: string; matches: SearchMatch[] } | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [blink, setBlink] = useState(0);
+  const [selection, setSelection] = useState<{ ax: number; ay: number; bx: number; by: number } | null>(null);
+  const [note, setNote] = useState("");
+  const [queued, setQueued] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
   const inputRef = useRef("");
   const cursorRef = useRef(0);
   const scrolledRef = useRef(false);
+  const dragRef = useRef<DragState | null>(null);
+  const geomRef = useRef({ top: 0, count: 0 });
+  const textsRef = useRef<string[]>([]);
+  const uiRef = useRef({ selectable: false });
+  const stdoutRef = useRef<{ write: (chunk: string) => unknown; isTTY?: boolean } | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueRef = useRef<string[]>([]);
+  const pricingRef = useRef<Map<string, ModelInfo> | null>(null);
 
   function write(value: string, position: number): void {
     inputRef.current = value;
@@ -104,6 +145,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   }
   const { exit } = useApp();
   const { stdout } = useStdout();
+  stdoutRef.current = stdout;
   const [size, setSize] = useState({ rows: stdout.rows ?? DEFAULT_ROWS, columns: stdout.columns ?? DEFAULT_COLUMNS });
 
   useEffect(() => {
@@ -113,6 +155,85 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       stdout.off("resize", update);
     };
   }, [stdout]);
+
+  function flashNote(text: string): void {
+    setNote(text);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setNote(""), 2000);
+  }
+
+  async function updateCost(model: string, usage: Usage): Promise<void> {
+    if (activeConfig.provider !== "openrouter") {
+      setCost(null);
+      return;
+    }
+    try {
+      if (pricingRef.current === null) {
+        const list = await fetchModels(activeConfig.baseUrl, activeConfig.apiKey);
+        pricingRef.current = new Map(list.map((entry) => [entry.id, entry]));
+      }
+      setCost(estimateCost(pricingRef.current.get(model), usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0));
+    } catch {
+      setCost(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!mouse) return;
+    return mouse.on((event) => {
+      if (event.type === "wheel") return;
+      const geom = geomRef.current;
+      if (event.type === "press") {
+        dragRef.current = null;
+        if (event.button !== 0 || !uiRef.current.selectable) {
+          setSelection(null);
+          return;
+        }
+        dragRef.current = {
+          ax: event.x - 1,
+          ay: event.y - 1,
+          texts: textsRef.current.slice(),
+          top: geom.top,
+          count: geom.count,
+          moved: false,
+        };
+        return;
+      }
+      if (event.type === "drag") {
+        const drag = dragRef.current;
+        if (!drag || event.button !== 0) return;
+        drag.moved = true;
+        setSelection({ ax: drag.ax, ay: drag.ay, bx: event.x - 1, by: event.y - 1 });
+        return;
+      }
+      const drag = dragRef.current;
+      dragRef.current = null;
+      if (!drag || event.button !== 0) return;
+      setSelection(null);
+      const rect = normalizeRect(drag.ax, drag.ay, event.x - 1, event.y - 1);
+      const relTop = rect.top - drag.top;
+      const relBottom = rect.bottom - drag.top;
+      const clampedTop = Math.max(0, relTop);
+      const clampedBottom = Math.min(drag.count - 1, relBottom);
+      if (!drag.moved || clampedBottom < clampedTop) return;
+      const adjusted: Rect = {
+        top: clampedTop,
+        bottom: clampedBottom,
+        left: relTop < 0 ? 0 : rect.left,
+        right: relBottom >= drag.count ? Number.MAX_SAFE_INTEGER : rect.right,
+      };
+      const text = extractSelectedText(drag.texts, adjusted);
+      if (!text.trim()) return;
+      copyToClipboard(text, stdoutRef.current ?? undefined);
+      flashNote(`✓ Copied ${text.length} char${text.length === 1 ? "" : "s"} to clipboard`);
+    });
+  }, [mouse]);
+
+  useEffect(() => {
+    return () => {
+      if (noteTimer.current) clearTimeout(noteTimer.current);
+    };
+  }, []);
 
   const rows = Math.max(size.rows, 10);
   const columns = Math.max(size.columns, 40);
@@ -136,6 +257,10 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   }, [firstPrompt]);
 
   useInput((character, key) => {
+    if (selection !== null || dragRef.current !== null) {
+      setSelection(null);
+      dragRef.current = null;
+    }
     if (key.ctrl && character?.toLowerCase() === "c") {
       exit({ sessionId: session.id, createdAt: session.createdAt });
       return;
@@ -168,6 +293,14 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     }
     if (busy) {
       if (key.escape) abortRef.current?.abort();
+      else if (key.return) {
+        const content = input.trim();
+        if (content) {
+          queueRef.current.push(content);
+          setQueued(queueRef.current.length);
+          write("", 0);
+        }
+      }
       return;
     }
     if (key.escape || key.tab && !showAuto) return;
@@ -244,6 +377,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   }
 
   async function send(messages: Message[]): Promise<void> {
+    const startedAt = Date.now();
     const base: Session = { ...session, messages };
     setCompleted(messages);
     setSession(base);
@@ -312,9 +446,17 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     setSession({ ...base, messages: convo });
     if (!scrolledRef.current) setScrollOffset(0);
     setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
+    if (usage) void updateCost(base.model, usage);
     bufferRef.current = "";
     setStreaming(null);
+    if (!failure && !controller.signal.aborted && Date.now() - startedAt > 3000) {
+      stdoutRef.current?.write("\x07");
+      flashNote("✓ Reply ready");
+    }
     setError(failure);
+    const next = queueRef.current.shift();
+    setQueued(queueRef.current.length);
+    if (next) void submit(next);
   }
 
   async function streamRound(
@@ -329,10 +471,14 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     const flush = setInterval(() => setStreaming(bufferRef.current), 50);
     try {
       const payload: Message[] = [
-        { role: "system", content: systemPrompt(process.cwd()), timestamp: new Date().toISOString() },
+        {
+          role: "system",
+          content: activeConfig.systemPrompt?.trim() ? activeConfig.systemPrompt : systemPrompt(process.cwd()),
+          timestamp: new Date().toISOString(),
+        },
         ...convo,
       ];
-      for await (const token of streamChat({ ...config, defaultModel: model }, payload, {
+      for await (const token of streamChat({ ...activeConfig, defaultModel: model }, payload, {
         signal: controller.signal,
         tools: toolSchemas(),
         onUsage,
@@ -363,6 +509,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     saveSession(next);
     setSession(next);
     setTokens(null);
+    setCost(null);
     setError("");
   }
 
@@ -372,6 +519,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
       setSession(loaded);
       setCompleted(loaded.messages);
       setTokens(null);
+      setCost(null);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -383,6 +531,7 @@ export function App({ config, session: initialSession }: { config: Config; sessi
     setSession(fresh);
     setCompleted([]);
     setTokens(null);
+    setCost(null);
     setError("");
   }
 
@@ -407,8 +556,101 @@ export function App({ config, session: initialSession }: { config: Config; sessi
         if (matched.arg) switchModel(matched.arg);
         else openOverlay("model");
         break;
+      case "/copy": {
+        const last = [...completed].reverse().find((message) => message.role === "assistant" && message.content.trim());
+        if (!last) {
+          setError("Nothing to copy yet.");
+          break;
+        }
+        copyToClipboard(last.content, stdoutRef.current ?? undefined);
+        flashNote(`✓ Copied ${last.content.length} chars to clipboard`);
+        break;
+      }
+      case "/retry": {
+        const lastUser = [...session.messages].reverse().findIndex((message) => message.role === "user");
+        if (lastUser === -1) {
+          setError("Nothing to retry yet.");
+          break;
+        }
+        void send(session.messages.slice(0, session.messages.length - lastUser));
+        break;
+      }
+      case "/undo": {
+        const lastUser = [...session.messages].reverse().findIndex((message) => message.role === "user");
+        if (lastUser === -1) {
+          setError("Nothing to undo.");
+          break;
+        }
+        const truncated = session.messages.slice(0, session.messages.length - lastUser - 1);
+        const next = { ...session, messages: truncated, updatedAt: new Date().toISOString() };
+        saveSession(next);
+        setSession(next);
+        setCompleted(truncated);
+        setTokens(null);
+        setError("");
+        setScrollOffset(0);
+        flashNote("✓ Removed last exchange");
+        break;
+      }
+      case "/export": {
+        if (completed.length === 0) {
+          setError("Nothing to export yet.");
+          break;
+        }
+        const json = matched.arg.trim().toLowerCase() === "json";
+        const filePath = resolve(process.cwd(), `bajajbot-${session.id}.${json ? "json" : "md"}`);
+        const body = json
+          ? JSON.stringify({ model: session.model, createdAt: session.createdAt, messages: completed }, null, 2)
+          : toMarkdown(session.model, completed);
+        try {
+          writeFileSync(filePath, `${body}\n`, "utf8");
+          flashNote(`✓ Exported to ${filePath}`);
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+        break;
+      }
+      case "/search": {
+        const query = matched.arg.trim();
+        if (!query) {
+          setError("Usage: /search <text>");
+          break;
+        }
+        const needle = query.toLowerCase();
+        const matches: SearchMatch[] = [];
+        completed.forEach((message, messageIndex) => {
+          const haystack = message.content.toLowerCase();
+          let from = 0;
+          while (matches.length < 50) {
+            const at = haystack.indexOf(needle, from);
+            if (at === -1) break;
+            const start = Math.max(0, at - 30);
+            const end = Math.min(message.content.length, at + query.length + 30);
+            matches.push({
+              messageIndex,
+              role: message.role === "user" || message.role === "assistant" ? message.role : "tool",
+              snippet: `${start > 0 ? "…" : ""}${message.content.slice(start, end).replace(/\s+/g, " ").trimEnd()}${end < message.content.length ? "…" : ""}`,
+            });
+            from = at + Math.max(query.length, 1);
+          }
+        });
+        if (matches.length === 0) {
+          flashNote(`No matches for "${query}"`);
+          break;
+        }
+        setSearch({ query, matches });
+        openOverlay("search");
+        break;
+      }
       case "/sessions":
         openOverlay("sessions");
+        break;
+      case "/profile":
+        if (Object.keys(activeConfig.profiles ?? {}).length === 0) {
+          setError("No profiles saved. Use `bajajbot profile save <name>`.");
+          break;
+        }
+        openOverlay("profile");
         break;
       case "/new":
         startNewChat();
@@ -417,6 +659,20 @@ export function App({ config, session: initialSession }: { config: Config; sessi
         openOverlay("logout");
         break;
     }
+  }
+
+  function applyProfile(name?: string): void {
+    closeOverlay();
+    if (!name) return;
+    const profile = activeConfig.profiles?.[name];
+    if (!profile) return;
+    const next: Config = { ...profile, profiles: activeConfig.profiles };
+    saveConfig(next);
+    setActiveConfig(next);
+    setProfileName(name);
+    pricingRef.current = null;
+    switchModel(profile.defaultModel);
+    flashNote(`✓ Profile "${name}" active`);
   }
 
   const chat = useMemo(() => {
@@ -438,6 +694,41 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   );
   const showChatBody = !overlay && (!fresh || confirmRequest !== null);
 
+  // Screen-row geometry of the chat viewport (bottom-anchored stack below it).
+  const stackRows =
+    (offset > 0 ? 1 : 0) +
+    (confirmRequest ? Math.min(confirmRequest.detail.split("\n").length, 6) + 7 : 0) +
+    (showAuto ? suggestions.length : 0) +
+    (error ? 1 : 0) +
+    (busy ? 1 : 0) +
+    3 + // InputBox border box
+    2; // StatusBar rule + row
+  const chatTopRow = rows - visibleLines.length - stackRows;
+  geomRef.current = { top: chatTopRow, count: visibleLines.length };
+  textsRef.current = visibleLines.map((line) => line.text);
+  uiRef.current = { selectable: showChatBody };
+
+  let highlight: Record<number, Highlight> | undefined;
+  if (selection && showChatBody) {
+    const rect = normalizeRect(selection.ax, selection.ay, selection.bx, selection.by);
+    const relTop = rect.top - chatTopRow;
+    const relBottom = rect.bottom - chatTopRow;
+    if (relBottom >= 0 && relTop < visibleLines.length) {
+      highlight = {};
+      for (
+        let index = Math.max(0, relTop);
+        index <= Math.min(visibleLines.length - 1, relBottom);
+        index += 1
+      ) {
+        highlight[index] = {
+          left: index === relTop ? rect.left : 0,
+          right: index === relBottom ? rect.right : Number.MAX_SAFE_INTEGER,
+          full: index !== relTop && index !== relBottom,
+        };
+      }
+    }
+  }
+
   const wheelUp = (): void => {
     scrolledRef.current = true;
     setScrollOffset((value) => value + SCROLL_STEP);
@@ -447,12 +738,15 @@ export function App({ config, session: initialSession }: { config: Config; sessi
   return (
     <Box flexDirection="column">
       {fresh && !overlay && !confirmRequest ? (
-        <Splash config={config} input={input} cursor={cursor} rows={rows} columns={columns} />
+        <Splash config={activeConfig} input={input} cursor={cursor} rows={rows} columns={columns} />
       ) : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
-        <ModelPicker config={config} onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }} />
+        <ModelPicker config={activeConfig} onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }} />
+      ) : null}
+      {overlay === "profile" ? (
+        <ProfilePicker profiles={activeConfig.profiles ?? {}} active={profileName} onSelect={applyProfile} />
       ) : null}
       {overlay === "sessions" ? (
         <SessionPicker
@@ -463,9 +757,24 @@ export function App({ config, session: initialSession }: { config: Config; sessi
           }}
         />
       ) : null}
+      {overlay === "search" && search ? (
+        <SearchDialog
+          matches={search.matches}
+          query={search.query}
+          onClose={closeOverlay}
+          onSelect={(match) => {
+            closeOverlay();
+            if (!match) return;
+            const line = chat.findIndex((entry) => entry.messageIndex === match.messageIndex);
+            if (line === -1) return;
+            scrolledRef.current = true;
+            setScrollOffset(Math.max(0, chat.length - chatBudget - line));
+          }}
+        />
+      ) : null}
       {showChatBody ? (
         <Box height={rows} flexDirection="column" justifyContent="flex-end">
-          <ChatViewport lines={visibleLines} />
+          <ChatViewport lines={visibleLines} highlight={highlight} width={columns} />
           {offset > 0 ? (
             <Text dimColor>{`  ↑ ${offset} more lines above · pgDn / end returns to latest`}</Text>
           ) : null}
@@ -492,11 +801,13 @@ export function App({ config, session: initialSession }: { config: Config; sessi
               <Text color={theme.accent}>
                 {`  ${SPINNER_FRAMES[blink % SPINNER_FRAMES.length]} Working…`}
               </Text>
-              <Text dimColor> · esc to interrupt</Text>
+              <Text dimColor>
+                {queued > 0 ? ` · ${queued} queued` : ""} · esc to interrupt
+              </Text>
             </Text>
           ) : null}
           <InputBox value={input} cursor={cursor} active={!busy} />
-          <StatusBar model={session.model} tokens={tokens} streaming={busy} />
+          <StatusBar model={session.model} tokens={tokens} streaming={busy} note={note || undefined} cost={cost} />
         </Box>
       ) : null}
     </Box>

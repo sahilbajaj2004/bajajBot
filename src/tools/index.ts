@@ -1,8 +1,9 @@
 import type { ToolArgs, ToolContext, ToolDef, ToolSchema } from "./types.js";
 import { deletePath, editFile, listDir, readFile, writeFile } from "./fs.js";
 import { runCommand } from "./shell.js";
+import { fetchUrl } from "./web.js";
 
-export const TOOLS: ToolDef[] = [readFile, listDir, writeFile, editFile, deletePath, runCommand];
+export const TOOLS: ToolDef[] = [readFile, listDir, writeFile, editFile, deletePath, runCommand, fetchUrl];
 
 export function toolSchemas(): ToolSchema[] {
   return TOOLS.map((tool) => ({
@@ -15,7 +16,7 @@ export function systemPrompt(cwd: string): string {
   return [
     "You are bajajbot, an AI coding assistant running in the user's terminal.",
     `Working directory: ${cwd}`,
-    "You can use the provided tools to read files, explore directories, create and edit files, delete paths, and run shell commands.",
+    "You can use the provided tools to read files, explore directories, create and edit files, delete paths, run shell commands, and fetch web pages with fetch_url.",
     "Paths are relative to the working directory. Prefer edit_file with a unique snippet for small changes.",
     "The UI asks the user for confirmation before risky actions; do not ask for permission yourself.",
     "After using tools, summarize what you did concisely.",

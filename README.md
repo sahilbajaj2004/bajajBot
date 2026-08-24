@@ -14,13 +14,16 @@ npx bajajbot
 ## Features
 
 - Live token streaming in a clean terminal UI (Ink + React)
-- **Agent tools** — read, write, edit, delete files, list directories, and run shell commands
+- **Agent tools** — read, write, edit, delete files, list directories, run shell commands, and fetch web pages
 - Risky actions require explicit confirmation; nothing runs without your approval
-- Your choice of model and provider, switchable mid-chat with `/model`
+- Your choice of model and provider, switchable mid-chat with `/model` (type any model ID, even unlisted ones)
+- Saved provider profiles — switch endpoints with `/profile`
+- Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
+- Per-reply token usage and estimated cost (OpenRouter pricing)
 - First-run setup wizard — no config files to create manually
 - Conversations saved locally and resumable any time
 - Markdown replies with syntax-highlighted code
-- Mouse-wheel scrolling, PageUp/PageDown, and input history with arrow keys
+- Mouse-wheel scrolling, drag-to-select text copying, PageUp/PageDown, and input history with arrow keys
 - Stop generation mid-stream with `Esc`
 - API key masked in CLI output and stored only on your computer
 - Cross-platform: bash on macOS/Linux, cmd on Windows
@@ -59,6 +62,13 @@ bajajbot sessions                # pick a saved chat from a picker
 bajajbot config init             # re-run the setup wizard
 bajajbot config show             # show config; API key stays masked
 bajajbot config set-model <id>   # change the default model
+bajajbot config set temperature 0.7          # generation override (0-2)
+bajajbot config set maxTokens 4096           # cap reply length
+bajajbot config set systemPrompt "Be terse"  # replace the system prompt
+bajajbot config unset temperature            # clear an override
+bajajbot profile save work       # save current provider settings as a profile
+bajajbot profile list            # list saved profiles
+bajajbot profile use work        # switch to a profile
 bajajbot logout                  # delete config and all sessions
 ```
 
@@ -67,11 +77,20 @@ bajajbot logout                  # delete config and all sessions
 ```text
 /model <id>      Switch the model for this chat
 /model           Open a searchable model picker (type to filter, Enter to choose)
+/copy            Copy the last assistant reply to the clipboard
+/retry           Regenerate the last assistant reply
+/undo            Remove the last exchange
+/export          Save the chat to bajajbot-<session>.md (arg: json)
+/search <text>   Find text in this chat and jump to a match
 /sessions        Resume a saved chat from an overlay
+/profile         Switch a saved provider profile
 /new             Start a fresh chat
 /logout          Delete all config and sessions
 /help            Show the command list
 ```
+
+While the assistant is streaming you can keep typing — press Enter to queue
+messages; they send automatically when the reply finishes.
 
 ## Agent tools
 
@@ -85,6 +104,7 @@ BajajBot's assistant can use these tools on your project directory:
 | `edit_file` | Replace an exact snippet in a file | Yes |
 | `delete_path` | Permanently delete a file or directory | Yes |
 | `run_command` | Run a shell command (bash/cmd) | Yes |
+| `fetch_url` | Fetch a web page or API endpoint | Yes |
 
 Every risky action shows a confirmation prompt before it runs — press `y` to
 allow or `n`/`Esc` to deny. All paths are sandboxed to the working directory;
@@ -101,6 +121,15 @@ Home / End       Jump to top / return to latest
 Ctrl+C           Exit (shows resume command for the session)
 Tab              Autocomplete slash commands
 ```
+
+## Copying messages
+
+- **Drag with the left mouse button** over chat text — it highlights while you
+  drag and copies to the clipboard on release (with a `✓ Copied N chars` note).
+  Uses OSC 52, so it works even over SSH in supporting terminals, with
+  `pbcopy` / `wl-copy` / `xclip` as local fallbacks.
+- `/copy` copies the last assistant reply without touching the mouse.
+- Hold **Shift** while dragging to use your terminal's native selection instead.
 
 ## Providers
 
