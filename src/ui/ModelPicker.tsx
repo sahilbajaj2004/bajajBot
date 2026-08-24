@@ -40,21 +40,28 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
   }, [config]);
 
   const manual = models !== null && models.length === 0;
-  const filtered = (models ?? []).filter((model) => model.id.toLowerCase().includes(query.toLowerCase()));
-  const active = Math.min(selected, Math.max(0, filtered.length - 1));
-  const { viewSize, start } = useWindow(filtered.length, active);
-  const visible = filtered.slice(start, start + viewSize);
+  const trimmed = query.trim();
+  const hasExact = (models ?? []).some((model) => model.id.toLowerCase() === trimmed.toLowerCase());
+  const customId =
+    config.provider === "openrouter" && trimmed.length > 0 && !hasExact ? trimmed : null;
+  const filtered = (models ?? []).filter((model) => model.id.toLowerCase().includes(trimmed.toLowerCase()));
+  const rows: Array<{ id: string; custom: boolean }> = [
+    ...(customId ? [{ id: customId, custom: true }] : []),
+    ...filtered.map((model) => ({ id: model.id, custom: false })),
+  ];
+  const active = Math.min(selected, Math.max(0, rows.length - 1));
+  const { viewSize, start } = useWindow(rows.length, active);
+  const visible = rows.slice(start, start + viewSize);
 
   useInput((input, key) => {
     if (key.escape) return onSelect();
-    const selectable = filtered.length > 0;
-    if (key.upArrow) return selectable ? setSelected(Math.max(0, active - 1)) : undefined;
-    if (key.downArrow) return selectable ? setSelected(Math.min(filtered.length - 1, active + 1)) : undefined;
-    if (key.pageUp) return selectable ? setSelected(0) : undefined;
-    if (key.pageDown) return selectable ? setSelected(filtered.length - 1) : undefined;
+    if (key.upArrow) return rows.length > 0 ? setSelected(Math.max(0, active - 1)) : undefined;
+    if (key.downArrow) return rows.length > 0 ? setSelected(Math.min(rows.length - 1, active + 1)) : undefined;
+    if (key.pageUp) return rows.length > 0 ? setSelected(0) : undefined;
+    if (key.pageDown) return rows.length > 0 ? setSelected(rows.length - 1) : undefined;
     if (key.return) {
       if (manual) return query.trim() ? onSelect(query.trim()) : undefined;
-      return selectable ? onSelect(filtered[active]?.id) : undefined;
+      return rows.length > 0 ? onSelect(rows[active]?.id) : undefined;
     }
     if (key.backspace || key.delete) return setQuery((value) => value.slice(0, -1));
     if (key.ctrl || key.meta || !input) return;
@@ -71,26 +78,34 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
           {error ? <Text color="red">✗ {error}</Text> : <Text dimColor>No model list from this endpoint.</Text>}
           <Text dimColor>Type a model ID and press Enter.</Text>
         </>
-      ) : filtered.length === 0 ? (
+      ) : rows.length === 0 ? (
         <Text dimColor>No models match "{query}".</Text>
       ) : (
-        visible.map((model, index) => {
+        visible.map((row, index) => {
           const isActive = start + index === active;
           return (
-            <Text key={model.id} bold={isActive} color={isActive ? theme.accent : undefined}>
-              {` ${isActive ? "›" : " "} ${model.id}`}
+            <Text
+              key={row.custom ? `__custom__${row.id}` : row.id}
+              bold={isActive}
+              color={isActive ? theme.accent : row.custom ? "green" : undefined}
+            >
+              {` ${isActive ? "›" : " "} ${row.custom ? `+ ${row.id}  (custom)` : row.id}`}
             </Text>
           );
         })
       )}
       <Box marginTop={1} justifyContent="space-between">
         <Text dimColor>{manual ? `Model ID: ${query}` : `Search: ${query}`}</Text>
-        {!manual && models !== null && filtered.length > 0 ? (
-          <Text dimColor>{active + 1}/{filtered.length}</Text>
+        {!manual && models !== null && rows.length > 0 ? (
+          <Text dimColor>{active + 1}/{rows.length}</Text>
         ) : null}
       </Box>
-      <WindowHint shown={viewSize} total={filtered.length} />
-      <Text dimColor>↑↓ select · enter choose · esc close</Text>
+      <WindowHint shown={viewSize} total={rows.length} />
+      <Text dimColor>
+        {config.provider === "openrouter"
+          ? "↑↓ select · enter choose · type any model ID (e.g. stealth/ox-alpha) for + row · esc close"
+          : "↑↓ select · enter choose · esc close"}
+      </Text>
     </Overlay>
   );
 }
