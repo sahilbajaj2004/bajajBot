@@ -4,6 +4,7 @@ import { runCommand } from "./shell.js";
 import { searchFiles } from "./search.js";
 import { fetchUrl } from "./web.js";
 import { listSkills, listSkillsTool, loadSkillTool } from "./skills.js";
+import { setPlanTool } from "./plan.js";
 
 export const TOOLS: ToolDef[] = [
   readFile,
@@ -16,6 +17,7 @@ export const TOOLS: ToolDef[] = [
   fetchUrl,
   listSkillsTool,
   loadSkillTool,
+  setPlanTool,
 ];
 
 export function toolSchemas(): ToolSchema[] {
@@ -32,6 +34,7 @@ export function systemPrompt(cwd: string): string {
     "You can use the provided tools to read files, explore directories, search file contents with search_files, create and edit files, delete paths, run shell commands, and fetch web pages with fetch_url.",
     "Paths are relative to the working directory, but absolute paths (e.g. ~/Downloads or /tmp) work too — writing outside the project just asks for confirmation. Always prefer the file tools over shell tricks like cat heredocs. Use search_files to locate code before reading or editing files.",
     "The UI asks the user for confirmation before risky actions; do not ask for permission yourself.",
+    "For any multi-step task, maintain a visible plan with set_plan: create it first, mark steps in_progress as you start and done as you finish, and add steps you discover along the way.",
     "After using tools, summarize what you did concisely.",
   ];
   const skills = listSkills(cwd);

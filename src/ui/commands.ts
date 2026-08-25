@@ -13,6 +13,7 @@ export const COMMANDS: CommandDef[] = [
   { name: "/search", description: "Find text in this chat (jump to match)" },
   { name: "/skills", description: "Browse skills · enter runs one now" },
   { name: "/checkpoints", description: "Browse git snapshots · restore files" },
+  { name: "/changes", description: "Files the agent created/edited/deleted this session" },
   { name: "/sessions", description: "Resume a saved chat" },
   { name: "/usage", description: "Token and cost totals across all chats" },
   { name: "/profile", description: "Switch saved provider profile" },

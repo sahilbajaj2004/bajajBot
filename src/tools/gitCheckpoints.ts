@@ -107,3 +107,37 @@ export function restoreSnapshot(cwd: string, sha: string): boolean {
     return false;
   }
 }
+
+export interface ChangedFile {
+  status: "A" | "M" | "D";
+  path: string;
+}
+
+/**
+ * Files touched between the first and newest checkpoint of this project
+ * (i.e. everything the agent changed across the session). Empty when there
+ * are fewer than two checkpoints or git fails.
+ */
+export function sessionChangedFiles(cwd: string): ChangedFile[] {
+  try {
+    const chain = execFileSync("git", ["rev-list", REF], { cwd, encoding: "utf8", timeout: GIT_TIMEOUT_MS })
+      .split("\n")
+      .filter((line) => /^[0-9a-f]{40}$/.test(line));
+    if (chain.length < 2) return [];
+    const base = chain[chain.length - 1];
+    const output = execFileSync(
+      "git",
+      ["diff-tree", "-r", "--name-status", "--no-commit-id", base, chain[0]],
+      { cwd, encoding: "utf8", timeout: GIT_TIMEOUT_MS },
+    );
+    const seen = new Map<string, ChangedFile>();
+    for (const line of output.split("\n")) {
+      const [status, path] = line.split("\t");
+      if (!path || !["A", "M", "D"].includes(status)) continue;
+      if (!seen.has(path)) seen.set(path, { status: status as ChangedFile["status"], path });
+    }
+    return [...seen.values()].sort((a, b) => a.path.localeCompare(b.path));
+  } catch {
+    return [];
+  }
+}

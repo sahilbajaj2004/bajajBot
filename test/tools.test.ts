@@ -25,6 +25,7 @@ test("tool schemas expose every tool with a function signature", () => {
     "fetch_url",
     "list_skills",
     "load_skill",
+    "set_plan",
   ]);
 });
 

@@ -1,3 +1,5 @@
+import type { PlanItem } from "../session/types.js";
+
 /** Snapshot of a path's state before a tool mutated it, enough to undo. */
 export interface FileMutation {
   /** Absolute path that was mutated. */
@@ -15,6 +17,8 @@ export interface ToolContext {
   confirm: (title: string, detail: string) => Promise<boolean>;
   /** Called by mutating tools with a snapshot of the pre-change state. */
   recordMutation?: (mutation: FileMutation) => void;
+  /** Called when the agent updates its visible task plan. */
+  setPlan?: (items: PlanItem[]) => void;
 }
 
 export type ToolArgs = Record<string, string | undefined>;

@@ -12,11 +12,12 @@ import { loadAllSessions } from "../session/history.js";
 import { addUsage, aggregateUsage, emptyUsage } from "../session/usage.js";
 import { deriveSessionTitle } from "./title.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
-import type { Message, Session, ToolCall } from "../session/types.js";
+import type { Message, PlanItem, Session, ToolCall } from "../session/types.js";
+import { PlanBoard } from "./PlanBoard.js";
 import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
 import { listSkills, readSkillFile } from "../tools/skills.js";
 import { restoreMutations } from "../tools/undo.js";
-import { createSnapshot, listSnapshots, restoreSnapshot } from "../tools/gitCheckpoints.js";
+import { createSnapshot, listSnapshots, restoreSnapshot, sessionChangedFiles } from "../tools/gitCheckpoints.js";
 import type { FileMutation, ToolContext } from "../tools/types.js";
 import { buildVisionContent, extractAttachments } from "../util/attachments.js";
 import { listPathSuggestions } from "./pathSuggest.js";
@@ -33,6 +34,7 @@ import { SearchDialog, type SearchMatch } from "./SearchDialog.js";
 import { SessionPicker } from "./SessionPicker.js";
 import { SkillPicker } from "./SkillPicker.js";
 import { SnapshotPicker } from "./SnapshotPicker.js";
+import { ChangesOverlay } from "./ChangesOverlay.js";
 import { UsagePanel } from "./UsagePanel.js";
 import { extractSelectedText, normalizeRect, type Rect } from "./select.js";
 import { StatusBar } from "./StatusBar.js";
@@ -41,7 +43,7 @@ import { DEFAULT_COLUMNS, DEFAULT_ROWS, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "help" | "logout" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "help" | "logout" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -137,6 +139,7 @@ export function App({
   const [selection, setSelection] = useState<{ ax: number; ay: number; bx: number; by: number } | null>(null);
   const [note, setNote] = useState("");
   const [queued, setQueued] = useState(0);
+  const [plan, setPlan] = useState<PlanItem[]>(initialSession.plan ?? []);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
@@ -263,6 +266,7 @@ export function App({
   const usageTotals = useMemo(() => (overlay === "usage" ? aggregateUsage(loadAllSessions()) : null), [overlay]);
   const snapshots = useMemo(() => (overlay === "checkpoints" ? listSnapshots(process.cwd()) : []), [overlay]);
   const skillList = useMemo(() => (overlay === "skills" ? listSkills(process.cwd()) : []), [overlay]);
+  const changedFiles = useMemo(() => (overlay === "changes" ? sessionChangedFiles(process.cwd()) : []), [overlay]);
   const commandMatches = busy || overlay ? [] : filterCommands(input);
   const pathToken = busy || overlay || commandMatches.length > 0 ? null : (input.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? null);
 
@@ -473,6 +477,12 @@ export function App({
       confirm: (title, detail) =>
         new Promise<boolean>((resolve) => setConfirmRequest({ title, detail, resolve })),
       recordMutation: (mutation) => mutations.push(mutation),
+      setPlan: (items) => {
+        setPlan(items);
+        const withPlan = { ...sessionRef.current, plan: items };
+        saveSession(withPlan);
+        sessionRef.current = withPlan;
+      },
     };
     let convo = [...messages];
     let failure = "";
@@ -536,6 +546,7 @@ export function App({
       ...base,
       messages: convo,
       updatedAt: new Date().toISOString(),
+      plan,
       ...(hadTokens
         ? {
             usage: addUsage(base.usage ?? emptyUsage(), {
@@ -646,6 +657,7 @@ export function App({
       const loaded = loadSession(id);
       setSession(loaded);
       setCompleted(loaded.messages);
+      setPlan(loaded.plan ?? []);
       setTokens(null);
       setCost(null);
       setError("");
@@ -658,6 +670,7 @@ export function App({
     const fresh = createSession(session.model);
     setSession(fresh);
     setCompleted([]);
+    setPlan([]);
     setTokens(null);
     setCost(null);
     setError("");
@@ -688,6 +701,9 @@ export function App({
         break;
       case "/checkpoints":
         openOverlay("checkpoints");
+        break;
+      case "/changes":
+        openOverlay("changes");
         break;
       case "/model":
         if (matched.arg) switchModel(matched.arg);
@@ -842,12 +858,14 @@ export function App({
   const showChatBody = !overlay && (!fresh || confirmRequest !== null);
 
   // Screen-row geometry of the chat viewport (bottom-anchored stack below it).
+  const planRows = plan.length ? Math.min(plan.length, 5) + 1 : 0; // board + header
   const stackRows =
     (offset > 0 ? 1 : 0) +
     (confirmRequest ? Math.min(confirmRequest.detail.split("\n").length, 6) + 7 : 0) +
     (showAuto ? suggestions.length : 0) +
     (error ? 1 : 0) +
     (busy ? 1 : 0) +
+    planRows +
     3 + // InputBox border box
     2; // StatusBar rule + row
   const chatTopRow = rows - visibleLines.length - stackRows;
@@ -920,6 +938,7 @@ export function App({
           onClose={closeOverlay}
         />
       ) : null}
+      {overlay === "changes" ? <ChangesOverlay files={changedFiles} onClose={closeOverlay} /> : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
         <ModelPicker
@@ -1005,6 +1024,7 @@ export function App({
               </Text>
             </Text>
           ) : null}
+          {plan.length ? <PlanBoard plan={plan} /> : null}
           <InputBox value={input} cursor={cursor} active={!busy} />
           <StatusBar
             model={session.model}

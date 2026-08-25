@@ -32,6 +32,11 @@ export interface SessionUsage {
   costUsd: number;
 }
 
+export interface PlanItem {
+  task: string;
+  status: "pending" | "in_progress" | "done";
+}
+
 export interface Session {
   id: string;
   createdAt: string;
@@ -42,4 +47,6 @@ export interface Session {
   title?: string;
   /** Cumulative token/cost totals across the whole session. */
   usage?: SessionUsage;
+  /** Visible task plan the agent maintains via set_plan. */
+  plan?: PlanItem[];
 }

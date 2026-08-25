@@ -29,6 +29,8 @@ npx bajajbot
 - Context meter in the status bar shows how full the model's context budget is (yellow near the limit, red at it — then auto-compaction kicks in)
 - Git checkpoints — every reply auto-snapshots your project to a hidden ref (pure plumbing: branch, index and stash untouched); browse and restore files with `/checkpoints`
 - Update check — once a day, quietly asks npm if a newer version exists and prints a one-line notice at startup
+- **Live plan board** — for multi-step tasks the agent maintains a visible ✓/▸/○ checklist above your input, updating in real time and saved with the session
+- `/changes` — every file the agent created, edited or deleted this session (color-coded A/M/D from the checkpoint chain)
 - Auto-compaction — when a chat outgrows the token budget, older turns are AI-summarized into one bridge message so long sessions never hit the model's limit
 - Markdown replies with syntax-highlighted code
 - Mouse-wheel scrolling, drag-to-select text copying, PageUp/PageDown, and input history with arrow keys
@@ -104,6 +106,7 @@ bajajbot logout                  # delete config and all sessions
 /search <text>   Find text in this chat and jump to a match
 /skills          Browse installed skills · enter runs one immediately
 /checkpoints     Browse git file snapshots · restore after review
+/changes         Files the agent touched this session (A/M/D)
 /sessions        Resume a saved chat from an overlay
 /usage           Token & cost totals across all saved chats
 /profile         Switch a saved provider profile
@@ -174,6 +177,7 @@ BajajBot's assistant can use these tools on your project directory:
 | `run_command` | Run a shell command (bash/cmd) | Yes |
 | `fetch_url` | Fetch a web page or API endpoint | Yes |
 | `list_skills` / `load_skill` | Discover and follow skill playbooks (`.bajajbot/skills/*.md`) | No |
+| `set_plan` | Maintain the live task plan board shown in your terminal | No |
 
 Every risky action shows a confirmation prompt before it runs — press `y` to
 allow or `n`/`Esc` to deny. File edits and overwrites preview a colorized
