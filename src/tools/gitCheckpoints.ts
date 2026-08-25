@@ -1,9 +1,15 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
+const execFileAsync = promisify(execFile);
+const GIT_TIMEOUT_MS = 15_000;
 const REF = "refs/bajajbot/checkpoints";
+
+/** One checkpoint at a time; a still-running snapshot skips the next turn. */
+let inFlight = false;
 
 export interface Snapshot {
   sha: string;
@@ -27,31 +33,43 @@ export function isGitRepo(cwd: string): boolean {
 /**
  * Snapshot the whole working tree into a hidden commit on
  * refs/bajajbot/checkpoints using plumbing only — the user's index, branch,
- * stash and history are untouched. Returns the new sha or null when this is
- * not a repo or git failed.
+ * stash and history are untouched. Async so the chat UI never blocks on git;
+ * returns the new sha or null when skipped (not a repo, git failed, or a
+ * previous snapshot is still running).
  */
-export function createSnapshot(cwd: string, label: string): string | null {
-  if (!isGitRepo(cwd)) return null;
+export async function createSnapshot(cwd: string, label: string): Promise<string | null> {
+  if (inFlight || !isGitRepo(cwd)) return null;
+  inFlight = true;
   let indexFile: string | null = null;
   try {
-    const topLevel = git(cwd, ["rev-parse", "--show-toplevel"]);
+    const run = async (args: string[], env?: NodeJS.ProcessEnv): Promise<string> => {
+      const { stdout } = await execFileAsync("git", args, {
+        cwd,
+        env: { ...process.env, ...env },
+        timeout: GIT_TIMEOUT_MS,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      return stdout.trim();
+    };
+    const topLevel = await run(["rev-parse", "--show-toplevel"]);
     indexFile = mkdtempSync(join(tmpdir(), "bajajbot-idx-"));
     const indexEnv = { GIT_INDEX_FILE: join(indexFile, "index") };
-    git(topLevel, ["add", "-A", "."], indexEnv);
-    const tree = git(topLevel, ["write-tree"], indexEnv);
+    await run(["add", "-A", "."], indexEnv).catch(() => undefined);
+    const tree = await run(["write-tree"], indexEnv);
     let parent: string[] = [];
     try {
-      parent = ["-p", git(topLevel, ["rev-parse", "--verify", REF])];
+      parent = ["-p", await run(["rev-parse", "--verify", REF])];
     } catch {
       // first checkpoint has no parent
     }
-    const sha = git(topLevel, ["commit-tree", tree, ...parent, "-m", `bajajbot: ${label}`]);
-    git(topLevel, ["update-ref", REF, sha]);
+    const sha = await run(["commit-tree", tree, ...parent, "-m", `bajajbot: ${label}`]);
+    await run(["update-ref", REF, sha]);
     return sha;
   } catch {
     return null;
   } finally {
     if (indexFile) rmSync(indexFile, { recursive: true, force: true });
+    inFlight = false;
   }
 }
 

@@ -20,25 +20,25 @@ function worktreeState(): string {
   return readFileSync(join(root, "app.txt"), "utf8");
 }
 
-test("isGitRepo distinguishes repos from plain directories", () => {
+test("isGitRepo distinguishes repos from plain directories", async () => {
   assert.equal(isGitRepo(root), true);
   const outside = mkdtempSync(join(tmpdir(), "bajajbot-nogit-"));
   try {
     assert.equal(isGitRepo(outside), false);
-    assert.equal(createSnapshot(outside, "nope"), null);
+    assert.equal(await createSnapshot(outside, "nope"), null);
   } finally {
     rmSync(outside, { recursive: true, force: true });
   }
 });
 
-test("checkpoints chain newest-first and restore old file contents", () => {
+test("checkpoints chain newest-first and restore old file contents", async () => {
   writeFileSync(join(root, "app.txt"), "version 1\n");
-  const first = createSnapshot(root, "first turn");
+  const first = await createSnapshot(root, "first turn");
   assert.ok(first);
 
   writeFileSync(join(root, "app.txt"), "version 2 — edited by agent\n");
   writeFileSync(join(root, "extra.txt"), "created later\n");
-  const second = createSnapshot(root, "second turn");
+  const second = await createSnapshot(root, "second turn");
   assert.ok(second && second !== first);
 
   const snapshots = listSnapshots(root);

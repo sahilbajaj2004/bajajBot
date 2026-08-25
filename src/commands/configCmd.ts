@@ -29,7 +29,7 @@ export function registerConfigCommands(program: Command): void {
 
   config
     .command("set <key> <value...>")
-    .description("Set temperature (0-2), maxTokens (int), systemPrompt or contextTokens")
+    .description("Set temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd or favoriteModels")
     .action(async (key: string, value: string[]) => {
       const current = await ensureConfig();
       const text = value.join(" ").trim();
@@ -59,6 +59,24 @@ export function registerConfigCommands(program: Command): void {
         }
         saveConfig({ ...current, systemPrompt: text });
         console.log(`systemPrompt = "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`);
+      } else if (key === "spendLimitUsd") {
+        const limit = Number(text);
+        if (!Number.isFinite(limit) || limit <= 0) {
+          console.log("spendLimitUsd must be a positive number.");
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, spendLimitUsd: limit });
+        console.log(`spendLimitUsd = ${limit}`);
+      } else if (key === "favoriteModels") {
+        const favorites = text.split(",").map((entry) => entry.trim()).filter(Boolean);
+        if (!favorites.length) {
+          console.log('Usage: bajajbot config set favoriteModels "vendor/model-a, vendor/model-b"');
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, favoriteModels: favorites });
+        console.log(`favoriteModels = ${favorites.join(", ")}`);
       } else if (key === "contextTokens") {
         const contextTokens = Number(text);
         if (!Number.isInteger(contextTokens) || contextTokens < 1000) {
@@ -69,23 +87,23 @@ export function registerConfigCommands(program: Command): void {
         saveConfig({ ...current, contextTokens });
         console.log(`contextTokens = ${contextTokens}`);
       } else {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens`);
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels`);
         process.exitCode = 1;
       }
     });
 
   config
     .command("unset <key>")
-    .description("Clear temperature, maxTokens, systemPrompt or contextTokens")
+    .description("Clear temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd or favoriteModels")
     .action(async (key: string) => {
       const current = await ensureConfig();
-      if (key !== "temperature" && key !== "maxTokens" && key !== "systemPrompt" && key !== "contextTokens") {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens`);
+      if (!["temperature", "maxTokens", "systemPrompt", "contextTokens", "spendLimitUsd", "favoriteModels"].includes(key)) {
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels`);
         process.exitCode = 1;
         return;
       }
       const next = { ...current } as Partial<Config>;
-      delete next[key];
+      delete next[key as keyof Config];
       saveConfig(next as Config);
       console.log(`${key} cleared.`);
     });

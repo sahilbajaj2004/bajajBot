@@ -8,6 +8,7 @@ import { configExists, loadConfig } from "../src/config/store.js";
 import { loadSession, listSessions } from "../src/session/history.js";
 import { registerSessionsCommand } from "../src/commands/sessionsCmd.js";
 import { registerConfigCommands } from "../src/commands/configCmd.js";
+import { registerUsageCommand } from "../src/commands/usageCmd.js";
 
 process.title = "bajajbot";
 
@@ -40,6 +41,7 @@ program.name("bajajbot").description("Terminal AI chat client").version(packageV
 registerConfigCommands(program);
 program.command("chat").description("Start a chat").option("--resume <id>").action(({ resume }: { resume?: string }) => startChat(resume ? loadSession(resume) : undefined));
 registerSessionsCommand(program);
+registerUsageCommand(program);
 
 program
   .argument("[prompt...]", "prompt for --print mode or first chat message")
@@ -47,14 +49,14 @@ program
   .option("-c, --continue", "resume your most recent session")
   .action(async (promptParts: string[], options: { print?: boolean; continue?: boolean }) => {
     const prompt = promptParts.map((part: string) => part.trim()).filter(Boolean).join(" ").trim();
-    if (!options.print && !options.continue) return startChat(undefined, prompt || undefined);
+    if (!options.print && !options.continue) return startChat(undefined, prompt || undefined, packageVersion());
     if (options.continue && !options.print) {
       const [latest] = listSessions();
       if (!latest) {
         console.error("bajajbot: no saved sessions yet — starting a new chat.");
         return startChat(undefined, prompt || undefined);
       }
-      return startChat(loadSession(latest.id), prompt || undefined);
+      return startChat(loadSession(latest.id), prompt || undefined, packageVersion());
     }
     const piped = await readPipedStdin();
     const full = piped && prompt ? `${prompt}\n\n${piped}` : prompt || piped;

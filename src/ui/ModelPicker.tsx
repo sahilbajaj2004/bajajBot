@@ -1,7 +1,7 @@
 import { Box, Text, useInput, useStdout } from "ink";
 import { useEffect, useState } from "react";
 import type { Config } from "../config/types.js";
-import { fetchModels, type ModelInfo } from "../provider/models.js";
+import { fetchModels, orderModels, type ModelInfo } from "../provider/models.js";
 import { Overlay } from "./Overlay.js";
 import { DEFAULT_ROWS, theme } from "./theme.js";
 
@@ -19,7 +19,15 @@ export function WindowHint({ shown, total }: { shown: number; total: number }) {
   return <Text dimColor>↑↓ scroll</Text>;
 }
 
-export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (id?: string) => void }) {
+export function ModelPicker({
+  config,
+  onSelect,
+  onToggleFavorite,
+}: {
+  config: Config;
+  onSelect: (id?: string) => void;
+  onToggleFavorite?: (id: string) => void;
+}) {
   const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -44,10 +52,11 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
   const hasExact = (models ?? []).some((model) => model.id.toLowerCase() === trimmed.toLowerCase());
   const customId =
     config.provider === "openrouter" && trimmed.length > 0 && !hasExact ? trimmed : null;
-  const filtered = (models ?? []).filter((model) => model.id.toLowerCase().includes(trimmed.toLowerCase()));
-  const rows: Array<{ id: string; custom: boolean }> = [
+  const ordered = orderModels(models ?? [], config.favoriteModels);
+  const filtered = ordered.filter((entry) => entry.id.toLowerCase().includes(trimmed.toLowerCase()));
+  const rows: Array<{ id: string; custom?: boolean; favorite?: boolean }> = [
     ...(customId ? [{ id: customId, custom: true }] : []),
-    ...filtered.map((model) => ({ id: model.id, custom: false })),
+    ...filtered.map((entry) => ({ id: entry.id, favorite: entry.favorite })),
   ];
   const active = Math.min(selected, Math.max(0, rows.length - 1));
   const { viewSize, start } = useWindow(rows.length, active);
@@ -59,6 +68,10 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
     if (key.downArrow) return rows.length > 0 ? setSelected(Math.min(rows.length - 1, active + 1)) : undefined;
     if (key.pageUp) return rows.length > 0 ? setSelected(0) : undefined;
     if (key.pageDown) return rows.length > 0 ? setSelected(rows.length - 1) : undefined;
+    if (input === "f" && !manual && rows[active] && onToggleFavorite) {
+      onToggleFavorite(rows[active].id);
+      return;
+    }
     if (key.return) {
       if (manual) return query.trim() ? onSelect(query.trim()) : undefined;
       return rows.length > 0 ? onSelect(rows[active]?.id) : undefined;
@@ -89,7 +102,7 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
               bold={isActive}
               color={isActive ? theme.accent : row.custom ? "green" : undefined}
             >
-              {` ${isActive ? "›" : " "} ${row.custom ? `+ ${row.id}  (custom)` : row.id}`}
+              {` ${isActive ? "›" : " "}${row.favorite ? "★" : " "} ${row.custom ? `+ ${row.id}  (custom)` : row.id}`}
             </Text>
           );
         })
@@ -103,7 +116,7 @@ export function ModelPicker({ config, onSelect }: { config: Config; onSelect: (i
       <WindowHint shown={viewSize} total={rows.length} />
       <Text dimColor>
         {config.provider === "openrouter"
-          ? "↑↓ select · enter choose · type any model ID (e.g. stealth/ox-alpha) for + row · esc close"
+          ? "↑↓ select · f pin/unpin ★ · enter choose · type any model ID for + row · esc close"
           : "↑↓ select · enter choose · esc close"}
       </Text>
     </Overlay>

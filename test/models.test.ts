@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clearModelCache, estimateCost, fetchModels, type ModelInfo } from "../src/provider/models.js";
+import { clearModelCache, estimateCost, fetchModels, orderModels, type ModelInfo } from "../src/provider/models.js";
 
 const priced: ModelInfo = {
   id: "vendor/model",
@@ -42,4 +42,15 @@ test("fetchModels caches per endpoint+auth for the TTL", async () => {
     globalThis.fetch = originalFetch;
     clearModelCache();
   }
+});
+
+test("orderModels pins favorites first, then alphabetical", () => {
+  const list = [
+    { id: "b/model" },
+    { id: "a/model" },
+    { id: "c/model" },
+  ];
+  const rows = orderModels(list, ["c/missing", "a/model"]);
+  assert.deepEqual(rows.map((row) => row.id), ["c/missing", "a/model", "b/model", "c/model"]);
+  assert.deepEqual(rows.map((row) => row.favorite), [true, true, false, false]);
 });

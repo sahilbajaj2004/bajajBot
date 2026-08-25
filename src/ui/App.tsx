@@ -255,6 +255,14 @@ export function App({
 
   const busy = streaming !== null;
   const fresh = completed.length === 0;
+
+  // Expensive overlay payloads are computed once when the overlay opens,
+  // never on re-renders caused by typing or streaming ticks.
+  const noSessions: ReturnType<typeof listSessions> = [];
+  const sessionRows = useMemo(() => (overlay === "sessions" ? listSessions() : noSessions), [overlay]);
+  const usageTotals = useMemo(() => (overlay === "usage" ? aggregateUsage(loadAllSessions()) : null), [overlay]);
+  const snapshots = useMemo(() => (overlay === "checkpoints" ? listSnapshots(process.cwd()) : []), [overlay]);
+  const skillList = useMemo(() => (overlay === "skills" ? listSkills(process.cwd()) : []), [overlay]);
   const commandMatches = busy || overlay ? [] : filterCommands(input);
   const pathToken = busy || overlay || commandMatches.length > 0 ? null : (input.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? null);
 
@@ -553,6 +561,10 @@ export function App({
     if (!scrolledRef.current) setScrollOffset(0);
     setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
     if (replyCost !== null) setCost(replyCost);
+    const limit = activeConfig.spendLimitUsd;
+    if (limit != null && replyCost != null && (finalSession.usage?.costUsd ?? 0) >= limit && (base.usage?.costUsd ?? 0) < limit) {
+      flashNote(`⚠ Session spend crossed $${limit.toFixed(2)}`);
+    }
     bufferRef.current = "";
     setStreaming(null);
     if (!failure && !controller.signal.aborted && Date.now() - startedAt > 3000) {
@@ -884,14 +896,14 @@ export function App({
         />
       ) : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
-      {overlay === "usage" ? <Overlay title="Usage"><UsagePanel totals={aggregateUsage(loadAllSessions())} /></Overlay> : null}
+      {overlay === "usage" && usageTotals ? <Overlay title="Usage"><UsagePanel totals={usageTotals} /></Overlay> : null}
       {overlay === "skills" ? (
         <SkillPicker
-          skills={listSkills(process.cwd())}
+          skills={skillList}
           onSelect={(name) => {
             closeOverlay();
             if (!name) return;
-            const skill = listSkills(process.cwd()).find((entry) => entry.name === name);
+            const skill = skillList.find((entry) => entry.name === name);
             if (!skill) return;
             void submit(`Load and follow the "${skill.name}" skill exactly.`, [skill.path]);
           }}
@@ -910,14 +922,26 @@ export function App({
       ) : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
-        <ModelPicker config={activeConfig} onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }} />
+        <ModelPicker
+          config={activeConfig}
+          onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }}
+          onToggleFavorite={(id) => {
+            const favorites = activeConfig.favoriteModels ?? [];
+            const next = favorites.some((entry) => entry.toLowerCase() === id.toLowerCase())
+              ? favorites.filter((entry) => entry.toLowerCase() !== id.toLowerCase())
+              : [...favorites, id];
+            const nextConfig = { ...activeConfig, favoriteModels: next };
+            saveConfig(nextConfig);
+            setActiveConfig(nextConfig);
+          }}
+        />
       ) : null}
       {overlay === "profile" ? (
         <ProfilePicker profiles={activeConfig.profiles ?? {}} active={profileName} onSelect={applyProfile} />
       ) : null}
       {overlay === "sessions" ? (
         <SessionPicker
-          sessions={listSessions()}
+          sessions={sessionRows}
           onSelect={(id) => {
             closeOverlay();
             if (id) resume(id);

@@ -40,3 +40,17 @@ export function estimateCost(model: ModelInfo | undefined, promptTokens: number,
   if (!Number.isFinite(prompt) && !Number.isFinite(completion)) return null;
   return (Number.isFinite(prompt) ? prompt * promptTokens : 0) + (Number.isFinite(completion) ? completion * completionTokens : 0);
 }
+
+/**
+ * Sort models with the user's favorites first (in pin order, including IDs
+ * missing from the endpoint list), everything else alphabetical after.
+ */
+export function orderModels(models: ModelInfo[], favorites: string[] = []): Array<{ id: string; name?: string; pricing?: ModelPricing; favorite: boolean }> {
+  const pinned = favorites.map((id) => ({ id, model: models.find((entry) => entry.id.toLowerCase() === id.toLowerCase()) }));
+  const rest = models.filter((entry) => !favorites.some((favorite) => favorite.toLowerCase() === entry.id.toLowerCase()));
+  const rows = [
+    ...pinned.map(({ id, model }) => ({ id: model?.id ?? id, name: model?.name, pricing: model?.pricing, favorite: true })),
+    ...rest.map((entry) => ({ id: entry.id, name: entry.name, pricing: entry.pricing, favorite: false })).sort((a, b) => a.id.localeCompare(b.id)),
+  ];
+  return rows;
+}

@@ -7,15 +7,21 @@ import { createMouseStdin } from "../ui/mouse.js";
 import { printGoodbye, type ExitSummary } from "../ui/goodbye.js";
 import { setTerminalTitle } from "../ui/title.js";
 import { createSession } from "../session/history.js";
+import { checkForUpdate } from "../util/updateCheck.js";
 import type { Session } from "../session/types.js";
 
-export async function startChat(session?: Session, initialPrompt?: string): Promise<void> {
+export async function startChat(session?: Session, initialPrompt?: string, version?: string): Promise<void> {
   setTerminalTitle("BajajBot");
   if (!configExists()) {
     const created = await initConfig();
     if (!created) return;
   }
   const config = loadConfig();
+  if (version) {
+    void checkForUpdate(version).then((latest) => {
+      if (latest) console.log(`⬆ bajajbot v${latest} available — npm install -g bajajbot@latest`);
+    });
+  }
   const mouse = createMouseStdin(process.stdin as NodeJS.ReadStream & { isTTY?: boolean });
   if (process.stdout.isTTY) process.stdout.write("\x1b[?1002h\x1b[?1006h");
   try {

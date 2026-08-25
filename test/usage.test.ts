@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addUsage, aggregateUsage, emptyUsage } from "../src/session/usage.js";
+import { addUsage, aggregateUsage, emptyUsage, formatUsageTotals } from "../src/session/usage.js";
 import { deriveSessionTitle } from "../src/ui/title.js";
 import type { Session } from "../src/session/types.js";
 
@@ -49,4 +49,16 @@ test("deriveSessionTitle trims long prompts and skips compaction bridges", () =>
   assert.equal(deriveSessionTitle(`x`.repeat(80)), `${"x".repeat(47)}…`);
   assert.equal(deriveSessionTitle("[Earlier conversation summarized]"), undefined);
   assert.equal(deriveSessionTitle(), undefined);
+});
+
+test("formatUsageTotals renders a readable report", () => {
+  const totals = aggregateUsage([
+    session("m/b", { requests: 2, promptTokens: 2500, completionTokens: 1500, costUsd: 0.02 }),
+    session("m/a", { requests: 1, promptTokens: 90000, completionTokens: 1000, costUsd: 0 }),
+  ]);
+  const text = formatUsageTotals(totals);
+  assert.match(text, /requests {8}3/);
+  assert.match(text, /prompt tokens {3}92\.5k/);
+  assert.match(text, /\$0\.0200/);
+  assert.match(text, /m\/b {2}\(2 req · 4\.0k tok · \$0\.0200\)/);
 });

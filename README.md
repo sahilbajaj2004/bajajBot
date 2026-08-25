@@ -28,6 +28,7 @@ npx bajajbot
 - Non-interactive mode — `bajajbot -p "prompt"` (plus piped stdin) streams one answer and exits, with agent tools enabled; perfect for scripts and CI
 - Context meter in the status bar shows how full the model's context budget is (yellow near the limit, red at it — then auto-compaction kicks in)
 - Git checkpoints — every reply auto-snapshots your project to a hidden ref (pure plumbing: branch, index and stash untouched); browse and restore files with `/checkpoints`
+- Update check — once a day, quietly asks npm if a newer version exists and prints a one-line notice at startup
 - Auto-compaction — when a chat outgrows the token budget, older turns are AI-summarized into one bridge message so long sessions never hit the model's limit
 - Markdown replies with syntax-highlighted code
 - Mouse-wheel scrolling, drag-to-select text copying, PageUp/PageDown, and input history with arrow keys
@@ -74,6 +75,9 @@ bajajbot chat --resume <id>      # resume a saved chat directly
 bajajbot sessions                # pick a saved chat from a picker
 bajajbot -p "summarize this repo"          # one-shot answer, then exit
 cat error.log | bajajbot -p "root cause?"  # pipe stdin into a prompt
+bajajbot usage                   # token & cost totals across all saved chats
+bajajbot config set favoriteModels "vendor/model-x"  # pin ★ models in /model
+bajajbot config set spendLimitUsd 5          # warn when session cost crosses $5
 bajajbot config init             # re-run the setup wizard
 bajajbot config show             # show config; API key stays masked
 bajajbot config set-model <id>   # change the default model
