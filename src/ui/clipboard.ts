@@ -29,9 +29,20 @@ function spawnClipboardHelpers(text: string): void {
     case "darwin":
       candidates.push(["pbcopy"]);
       break;
-    case "win32":
+    case "win32": {
+      // clip handles ASCII well; PowerShell decodes base64 so Unicode survives
       candidates.push(["clip"]);
+      const b64 = Buffer.from(text, "utf8").toString("base64");
+      if (b64.length <= 30_000) {
+        candidates.push([
+          "powershell",
+          "-NoProfile",
+          "-Command",
+          `Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')))`,
+        ]);
+      }
       break;
+    }
     default:
       if (process.env.WAYLAND_DISPLAY) candidates.push(["wl-copy"]);
       else {
@@ -41,7 +52,7 @@ function spawnClipboardHelpers(text: string): void {
   }
   for (const [command, ...args] of candidates) {
     try {
-      const child = spawn(command, args, { stdio: ["pipe", "ignore", "ignore"] });
+      const child = spawn(command, args, { stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
       child.on("error", () => {});
       child.stdin.on("error", () => {});
       child.stdin.end(text, "utf8");

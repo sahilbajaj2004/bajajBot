@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -51,11 +51,18 @@ test("edit_file requires a unique find string", async () => {
   assert.equal(readFileSync(join(root, "dup.txt"), "utf8"), "alpha b alpha\n");
 });
 
-test("paths outside the project directory are rejected", async () => {
-  const escaped = await executeTool({ name: "read_file", args: JSON.stringify({ path: "../../etc/passwd" }) }, ctx);
-  assert.match(escaped, /escapes the project directory/);
-  const absolute = await executeTool({ name: "read_file", args: JSON.stringify({ path: "/etc/passwd" }) }, ctx);
-  assert.match(absolute, /escapes the project directory/);
+test("paths outside the project directory resolve and are readable (confirmation guards writes)", async () => {
+  const outside = mkdtempSync(join(tmpdir(), "bajajbot-outside-"));
+  try {
+    writeFileSync(join(outside, "note.txt"), "hello outside");
+    const read = await executeTool(
+      { name: "read_file", args: JSON.stringify({ path: join(outside, "note.txt") }) },
+      ctx,
+    );
+    assert.equal(read, "hello outside");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
 });
 
 test("list_dir marks directories and rejects missing paths", async () => {

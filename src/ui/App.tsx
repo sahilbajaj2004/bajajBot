@@ -10,7 +10,8 @@ import { toMarkdown } from "../session/export.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
 import type { Message, Session, ToolCall } from "../session/types.js";
 import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
-import type { ToolContext } from "../tools/types.js";
+import { restoreMutations } from "../tools/undo.js";
+import type { FileMutation, ToolContext } from "../tools/types.js";
 import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { copyToClipboard } from "./clipboard.js";
@@ -45,6 +46,7 @@ const CHAT_RESERVED_ROWS = 8;
 const CONFIRM_RESERVED_ROWS = 13;
 const ERROR_RESERVED_ROWS = 3;
 const MIN_CHAT_BUDGET = 5;
+const MAX_AUTOCOMPLETE_ROWS = 5;
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   useInput((_character, key) => {
@@ -135,6 +137,9 @@ export function App({
   const stdoutRef = useRef<{ write: (chunk: string) => unknown; isTTY?: boolean } | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueRef = useRef<string[]>([]);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const lastTurnMutationsRef = useRef<FileMutation[]>([]);
   const pricingRef = useRef<Map<string, ModelInfo> | null>(null);
 
   function write(value: string, position: number): void {
@@ -292,16 +297,20 @@ export function App({
       return;
     }
     if (busy) {
-      if (key.escape) abortRef.current?.abort();
-      else if (key.return) {
+      if (key.escape) {
+        abortRef.current?.abort();
+        return;
+      }
+      if (key.return) {
         const content = input.trim();
         if (content) {
           queueRef.current.push(content);
           setQueued(queueRef.current.length);
           write("", 0);
         }
+        return;
       }
-      return;
+      // editing keys (typing, backspace, arrows, history) fall through below
     }
     if (key.escape || key.tab && !showAuto) return;
     if (key.return) {
@@ -371,24 +380,27 @@ export function App({
     scrolledRef.current = false;
     rememberMessage(content);
     await send([
-      ...session.messages,
+      ...sessionRef.current.messages,
       { role: "user", content, timestamp: new Date().toISOString() },
     ]);
   }
 
   async function send(messages: Message[]): Promise<void> {
     const startedAt = Date.now();
-    const base: Session = { ...session, messages };
+    const base: Session = { ...sessionRef.current, messages };
+    sessionRef.current = base;
     setCompleted(messages);
     setSession(base);
     setError("");
     setTokens(null);
     const controller = new AbortController();
     abortRef.current = controller;
+    const mutations: FileMutation[] = [];
     const toolCtx: ToolContext = {
       cwd: process.cwd(),
       confirm: (title, detail) =>
         new Promise<boolean>((resolve) => setConfirmRequest({ title, detail, resolve })),
+      recordMutation: (mutation) => mutations.push(mutation),
     };
     let convo = [...messages];
     let failure = "";
@@ -444,6 +456,7 @@ export function App({
     saveSession({ ...base, messages: convo, updatedAt: new Date().toISOString() });
     setCompleted(convo);
     setSession({ ...base, messages: convo });
+    sessionRef.current = { ...base, messages: convo };
     if (!scrolledRef.current) setScrollOffset(0);
     setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
     if (usage) void updateCost(base.model, usage);
@@ -454,6 +467,7 @@ export function App({
       flashNote("✓ Reply ready");
     }
     setError(failure);
+    lastTurnMutationsRef.current = mutations;
     const next = queueRef.current.shift();
     setQueued(queueRef.current.length);
     if (next) void submit(next);
@@ -589,7 +603,13 @@ export function App({
         setTokens(null);
         setError("");
         setScrollOffset(0);
-        flashNote("✓ Removed last exchange");
+        const { restored, skipped } = restoreMutations(lastTurnMutationsRef.current);
+        lastTurnMutationsRef.current = [];
+        flashNote(
+          restored > 0 || skipped > 0
+            ? `✓ Removed last exchange · reverted ${restored} file change(s)${skipped > 0 ? ` · ${skipped} not restorable` : ""}`
+            : "✓ Removed last exchange",
+        );
         break;
       }
       case "/export": {
@@ -683,7 +703,11 @@ export function App({
     return buildChatLines(messages, columns);
   }, [completed, columns, streaming]);
   const chatBudget = Math.max(
-    rows - CHAT_RESERVED_ROWS - (confirmRequest ? CONFIRM_RESERVED_ROWS : 0) - (error ? ERROR_RESERVED_ROWS : 0),
+    rows -
+      CHAT_RESERVED_ROWS -
+      (confirmRequest ? CONFIRM_RESERVED_ROWS : 0) -
+      (error ? ERROR_RESERVED_ROWS : 0) -
+      (showAuto ? Math.min(suggestions.length, MAX_AUTOCOMPLETE_ROWS) : 0),
     MIN_CHAT_BUDGET,
   );
   const maxOffset = Math.max(0, chat.length - chatBudget);

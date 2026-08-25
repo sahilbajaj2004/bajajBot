@@ -26,7 +26,9 @@ npx bajajbot
 - Mouse-wheel scrolling, drag-to-select text copying, PageUp/PageDown, and input history with arrow keys
 - Stop generation mid-stream with `Esc`
 - API key masked in CLI output and stored only on your computer
-- Cross-platform: bash on macOS/Linux, cmd on Windows
+- Cross-platform: bash on macOS/Linux, cmd on Windows; drag-copy and mouse
+  scrolling work in Windows Terminal, and clipboard falls back to
+  `clip`/PowerShell when OSC 52 isn't supported
 
 ## Quick start
 
@@ -79,7 +81,7 @@ bajajbot logout                  # delete config and all sessions
 /model           Open a searchable model picker (type to filter, Enter to choose)
 /copy            Copy the last assistant reply to the clipboard
 /retry           Regenerate the last assistant reply
-/undo            Remove the last exchange
+/undo            Remove the last exchange and revert its file changes
 /export          Save the chat to bajajbot-<session>.md (arg: json)
 /search <text>   Find text in this chat and jump to a match
 /sessions        Resume a saved chat from an overlay
@@ -107,8 +109,11 @@ BajajBot's assistant can use these tools on your project directory:
 | `fetch_url` | Fetch a web page or API endpoint | Yes |
 
 Every risky action shows a confirmation prompt before it runs — press `y` to
-allow or `n`/`Esc` to deny. All paths are sandboxed to the working directory;
-anything outside it is rejected.
+allow or `n`/`Esc` to deny. File tools accept paths relative to the project,
+absolute paths, and `~/…` — writing or deleting **outside** the project
+directory is allowed but always goes through the confirmation prompt. File
+changes made during the last exchange can be reverted with `/undo` (deleted
+directories up to 500 files / 1 MB are restorable).
 
 ## Keyboard shortcuts
 

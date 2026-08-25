@@ -1,16 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 import type { ToolArgs, ToolContext, ToolDef } from "./types.js";
+import { expandHome } from "../util/paths.js";
 
 const MAX_READ = 60_000;
 const MAX_LIST = 500;
 
-function safePath(ctx: ToolContext, target: string | undefined): string {
-  const root = resolve(ctx.cwd);
-  const full = resolve(root, target && target.trim() ? target : ".");
-  const rel = relative(root, full);
-  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("Path escapes the project directory.");
-  return full;
+function resolvePath(ctx: ToolContext, target: string | undefined): string {
+  return resolve(ctx.cwd, expandHome(target && target.trim() ? target : "."));
 }
 
 function text(args: ToolArgs, key: string): string {
@@ -19,18 +16,54 @@ function text(args: ToolArgs, key: string): string {
   return value;
 }
 
+const MAX_UNDO_FILES = 500;
+const MAX_UNDO_BYTES = 1_000_000;
+
+function recordFile(ctx: ToolContext, full: string): void {
+  if (!ctx.recordMutation) return;
+  ctx.recordMutation({
+    path: full,
+    previousContent: existsSync(full) ? readFileSync(full, "utf8") : null,
+    restorable: true,
+  });
+}
+
+function snapshotTree(root: string): { files: Array<{ path: string; content: string }>; restorable: boolean } {
+  const files: Array<{ path: string; content: string }> = [];
+  let bytes = 0;
+  let restorable = true;
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        if (files.length >= MAX_UNDO_FILES || bytes > MAX_UNDO_BYTES) {
+          restorable = false;
+          return;
+        }
+        const content = readFileSync(full, "utf8");
+        bytes += content.length;
+        files.push({ path: full, content });
+      }
+    }
+  };
+  walk(root);
+  return { files, restorable };
+}
+
 export const readFile: ToolDef = {
   name: "read_file",
   description: "Read a text file and return its contents.",
   risky: false,
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "File path relative to the project directory" } },
+    properties: { path: { type: "string", description: "File path — relative to the project, absolute, or ~/…" } },
     required: ["path"],
   },
   summary: (args) => args.path ?? "",
   execute: (args, ctx) => {
-    const full = safePath(ctx, text(args, "path"));
+    const full = resolvePath(ctx, text(args, "path"));
     if (!existsSync(full)) throw new Error(`Not found: ${args.path}`);
     let content = readFileSync(full, "utf8");
     if (content.length > MAX_READ) content = `${content.slice(0, MAX_READ)}\n… truncated (${content.length} chars total)`;
@@ -44,11 +77,11 @@ export const listDir: ToolDef = {
   risky: false,
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "Directory path relative to the project directory" } },
+    properties: { path: { type: "string", description: "Directory path — relative to the project, absolute, or ~/…" } },
   },
   summary: (args) => args.path || ".",
   execute: (args, ctx) => {
-    const full = safePath(ctx, args.path);
+    const full = resolvePath(ctx, args.path);
     if (!existsSync(full)) throw new Error(`Not found: ${args.path ?? "."}`);
     const entries = readdirSync(full, { withFileTypes: true })
       .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
@@ -65,15 +98,16 @@ export const writeFile: ToolDef = {
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "File path relative to the project directory" },
+      path: { type: "string", description: "File path — relative to the project, absolute, or ~/…" },
       content: { type: "string", description: "Full file content to write" },
     },
     required: ["path", "content"],
   },
   summary: (args) => `${args.path} (${(args.content ?? "").split("\n").length} lines)`,
   execute: (args, ctx) => {
-    const full = safePath(ctx, text(args, "path"));
+    const full = resolvePath(ctx, text(args, "path"));
     const content = text(args, "content");
+    recordFile(ctx, full);
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
     return `Wrote ${Buffer.byteLength(content)} bytes to ${args.path}`;
@@ -87,7 +121,7 @@ export const editFile: ToolDef = {
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "File path relative to the project directory" },
+      path: { type: "string", description: "File path — relative to the project, absolute, or ~/…" },
       find: { type: "string", description: "Exact existing text to replace" },
       replace: { type: "string", description: "Replacement text" },
     },
@@ -95,13 +129,14 @@ export const editFile: ToolDef = {
   },
   summary: (args) => `${args.path}: "${String(args.find ?? "").slice(0, 40)}" → "${String(args.replace ?? "").slice(0, 40)}"`,
   execute: (args, ctx) => {
-    const full = safePath(ctx, text(args, "path"));
+    const full = resolvePath(ctx, text(args, "path"));
     if (!existsSync(full)) throw new Error(`Not found: ${args.path}`);
     const original = readFileSync(full, "utf8");
     const find = text(args, "find");
     const occurrences = original.split(find).length - 1;
     if (occurrences === 0) throw new Error("find string not present in file");
     if (occurrences > 1) throw new Error(`find string appears ${occurrences} times; add surrounding context to make it unique`);
+    recordFile(ctx, full);
     writeFileSync(full, original.replace(find, () => (typeof args.replace === "string" ? args.replace : "")));
     return `Edited ${basename(String(args.path))}`;
   },
@@ -113,13 +148,22 @@ export const deletePath: ToolDef = {
   risky: true,
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "Path relative to the project directory" } },
+    properties: { path: { type: "string", description: "Path — relative to the project, absolute, or ~/…" } },
     required: ["path"],
   },
   summary: (args) => String(args.path ?? ""),
   execute: (args, ctx) => {
-    const full = safePath(ctx, text(args, "path"));
+    const full = resolvePath(ctx, text(args, "path"));
     if (!existsSync(full)) throw new Error(`Not found: ${args.path}`);
+    if (ctx.recordMutation) {
+      const stats = statSync(full);
+      if (stats.isDirectory()) {
+        const { files, restorable } = snapshotTree(full);
+        ctx.recordMutation({ path: full, previousContent: null, previousFiles: files, restorable });
+      } else {
+        recordFile(ctx, full);
+      }
+    }
     rmSync(full, { recursive: true });
     return `Deleted ${args.path}`;
   },

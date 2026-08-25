@@ -2,18 +2,11 @@ import { Box, Text } from "ink";
 import { theme } from "./theme.js";
 
 export function InputBox({ value, cursor, active }: { value: string; cursor: number; active: boolean }) {
-  if (!active) {
-    return (
-      <Box borderStyle="round" borderColor="gray" paddingX={1}>
-        <Text> </Text>
-      </Box>
-    );
-  }
   const position = Math.min(Math.max(cursor, 0), value.length);
   const before = value.slice(0, position);
   const at = value.slice(position, position + 1);
   return (
-    <Box borderStyle="round" borderColor={theme.accent} paddingX={1}>
+    <Box borderStyle="round" borderColor={active ? theme.accent : "gray"} paddingX={1}>
       {value || at ? (
         <Text>
           {before}
@@ -22,7 +15,7 @@ export function InputBox({ value, cursor, active }: { value: string; cursor: num
         </Text>
       ) : (
         <Text>
-          <Text dimColor>Type a message… (/ for commands)</Text>
+          <Text dimColor>{active ? `Type a message… (/ for commands)` : `Type to queue a message…`}</Text>
           <Text inverse> </Text>
         </Text>
       )}

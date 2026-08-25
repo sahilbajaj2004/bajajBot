@@ -1,6 +1,20 @@
+/** Snapshot of a path's state before a tool mutated it, enough to undo. */
+export interface FileMutation {
+  /** Absolute path that was mutated. */
+  path: string;
+  /** File content before the change, or null when the file did not exist. */
+  previousContent: string | null;
+  /** For deleted directories: the files (and contents) that used to live inside. */
+  previousFiles?: Array<{ path: string; content: string }>;
+  /** false when a deleted directory was too large to snapshot completely. */
+  restorable: boolean;
+}
+
 export interface ToolContext {
   cwd: string;
   confirm: (title: string, detail: string) => Promise<boolean>;
+  /** Called by mutating tools with a snapshot of the pre-change state. */
+  recordMutation?: (mutation: FileMutation) => void;
 }
 
 export type ToolArgs = Record<string, string | undefined>;
