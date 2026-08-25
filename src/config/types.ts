@@ -21,6 +21,10 @@ export interface Config {
   spendLimitUsd?: number;
   /** Model IDs pinned to the top of the /model picker. */
   favoriteModels?: string[];
+  /** Max git checkpoints kept per project (oldest pruned). Default 200. */
+  checkpointLimit?: number;
+  /** UI colorway name; see /theme in chat or `config set theme`. */
+  theme?: string;
   /** Saved provider profiles, switchable with /profile or `bajajbot profile use`. */
   profiles?: Record<string, Profile>;
 }

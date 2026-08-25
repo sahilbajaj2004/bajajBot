@@ -5,6 +5,8 @@ import { searchFiles } from "./search.js";
 import { fetchUrl } from "./web.js";
 import { listSkills, listSkillsTool, loadSkillTool } from "./skills.js";
 import { setPlanTool } from "./plan.js";
+import { instructionsBlock } from "./instructions.js";
+import { memoryPromptBlock, memoryTool } from "./memory.js";
 
 export const TOOLS: ToolDef[] = [
   readFile,
@@ -18,6 +20,7 @@ export const TOOLS: ToolDef[] = [
   listSkillsTool,
   loadSkillTool,
   setPlanTool,
+  memoryTool,
 ];
 
 export function toolSchemas(): ToolSchema[] {
@@ -35,15 +38,18 @@ export function systemPrompt(cwd: string): string {
     "Paths are relative to the working directory, but absolute paths (e.g. ~/Downloads or /tmp) work too — writing outside the project just asks for confirmation. Always prefer the file tools over shell tricks like cat heredocs. Use search_files to locate code before reading or editing files.",
     "The UI asks the user for confirmation before risky actions; do not ask for permission yourself.",
     "For any multi-step task, maintain a visible plan with set_plan: create it first, mark steps in_progress as you start and done as you finish, and add steps you discover along the way.",
+    "You have persistent memory: when you learn something durable (user preferences, project conventions, decisions), save it with the memory tool so future sessions remember it.",
     "After using tools, summarize what you did concisely.",
   ];
+  const memory = memoryPromptBlock();
+  if (memory) lines.push(memory.trim());
   const skills = listSkills(cwd);
   if (skills.length) {
     lines.push(
       `Skill playbooks are available: ${skills.map((skill) => `${skill.name} (${skill.description})`).join("; ")}. When the user's request matches a skill, call load_skill with its name first and follow its instructions.`,
     );
   }
-  return lines.join("\n");
+  return lines.join("\n") + instructionsBlock(cwd);
 }
 
 export function parseToolArgs(raw: string): ToolArgs {

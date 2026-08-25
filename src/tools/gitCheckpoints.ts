@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 15_000;
 const REF = "refs/bajajbot/checkpoints";
+/** Oldest checkpoints beyond this many are dropped after the chain fills. */
+export const DEFAULT_CHECKPOINT_LIMIT = 300;
 
 /** One checkpoint at a time; a still-running snapshot skips the next turn. */
 let inFlight = false;
@@ -36,8 +38,18 @@ export function isGitRepo(cwd: string): boolean {
  * stash and history are untouched. Async so the chat UI never blocks on git;
  * returns the new sha or null when skipped (not a repo, git failed, or a
  * previous snapshot is still running).
+ *
+ * Retention: a git ref can only keep "newest N" commits by reachability, and
+ * every snapshot links its predecessor — so once the chain holds `limit`
+ * snapshots (default 300) the next one starts a fresh parent-less root and
+ * the old chain becomes unreachable (git GC reclaims it). Checkpoints are a
+ * rolling safety net; the newest state is always intact.
  */
-export async function createSnapshot(cwd: string, label: string): Promise<string | null> {
+export async function createSnapshot(
+  cwd: string,
+  label: string,
+  options: { limit?: number } = {},
+): Promise<string | null> {
   if (inFlight || !isGitRepo(cwd)) return null;
   inFlight = true;
   let indexFile: string | null = null;
@@ -56,11 +68,17 @@ export async function createSnapshot(cwd: string, label: string): Promise<string
     const indexEnv = { GIT_INDEX_FILE: join(indexFile, "index") };
     await run(["add", "-A", "."], indexEnv).catch(() => undefined);
     const tree = await run(["write-tree"], indexEnv);
+    const limit = Math.max(2, options.limit ?? DEFAULT_CHECKPOINT_LIMIT);
+    const chainLength = (
+      await run(["rev-list", REF]).catch(() => "")
+    ).split("\n").filter((line) => /^[0-9a-f]{40}$/.test(line)).length;
     let parent: string[] = [];
-    try {
-      parent = ["-p", await run(["rev-parse", "--verify", REF])];
-    } catch {
-      // first checkpoint has no parent
+    if (chainLength > 0 && chainLength < limit) {
+      try {
+        parent = ["-p", await run(["rev-parse", "--verify", REF])];
+      } catch {
+        // first checkpoint has no parent
+      }
     }
     const sha = await run(["commit-tree", tree, ...parent, "-m", `bajajbot: ${label}`]);
     await run(["update-ref", REF, sha]);

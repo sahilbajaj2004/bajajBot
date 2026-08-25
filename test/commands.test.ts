@@ -14,6 +14,8 @@ test("filterCommands matches command prefixes", () => {
     "/skills",
     "/checkpoints",
     "/changes",
+    "/theme",
+    "/memory",
     "/sessions",
     "/usage",
     "/profile",

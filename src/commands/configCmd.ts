@@ -7,6 +7,7 @@ import { OPENROUTER_URL } from "../config/constants.js";
 import { configExists, loadConfig, saveConfig, removeConfig } from "../config/store.js";
 import type { Config } from "../config/types.js";
 import { normalizeBaseUrl } from "../util/url.js";
+import { applyTheme, THEMES } from "../ui/theme.js";
 import { SetupWizard } from "../ui/Setup.js";
 
 function maskApiKey(apiKey: string): string {
@@ -29,7 +30,7 @@ export function registerConfigCommands(program: Command): void {
 
   config
     .command("set <key> <value...>")
-    .description("Set temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd or favoriteModels")
+    .description("Set temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit or theme")
     .action(async (key: string, value: string[]) => {
       const current = await ensureConfig();
       const text = value.join(" ").trim();
@@ -86,19 +87,36 @@ export function registerConfigCommands(program: Command): void {
         }
         saveConfig({ ...current, contextTokens });
         console.log(`contextTokens = ${contextTokens}`);
+      } else if (key === "checkpointLimit") {
+        const checkpointLimit = Number(text);
+        if (!Number.isInteger(checkpointLimit) || checkpointLimit < 2) {
+          console.log("checkpointLimit must be an integer of at least 2.");
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, checkpointLimit });
+        console.log(`checkpointLimit = ${checkpointLimit}`);
+      } else if (key === "theme") {
+        if (!applyTheme(text)) {
+          console.log(`Unknown theme "${text}". Available: ${Object.keys(THEMES).join(", ")}`);
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, theme: text });
+        console.log(`theme = ${text}`);
       } else {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels`);
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme`);
         process.exitCode = 1;
       }
     });
 
   config
     .command("unset <key>")
-    .description("Clear temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd or favoriteModels")
+    .description("Clear temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit or theme")
     .action(async (key: string) => {
       const current = await ensureConfig();
-      if (!["temperature", "maxTokens", "systemPrompt", "contextTokens", "spendLimitUsd", "favoriteModels"].includes(key)) {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels`);
+      if (!["temperature", "maxTokens", "systemPrompt", "contextTokens", "spendLimitUsd", "favoriteModels", "checkpointLimit", "theme"].includes(key)) {
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme`);
         process.exitCode = 1;
         return;
       }

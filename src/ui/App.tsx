@@ -18,6 +18,8 @@ import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
 import { listSkills, readSkillFile } from "../tools/skills.js";
 import { restoreMutations } from "../tools/undo.js";
 import { createSnapshot, listSnapshots, restoreSnapshot, sessionChangedFiles } from "../tools/gitCheckpoints.js";
+import { loadInstructions } from "../tools/instructions.js";
+import { readMemory } from "../tools/memory.js";
 import type { FileMutation, ToolContext } from "../tools/types.js";
 import { buildVisionContent, extractAttachments } from "../util/attachments.js";
 import { listPathSuggestions } from "./pathSuggest.js";
@@ -35,15 +37,17 @@ import { SessionPicker } from "./SessionPicker.js";
 import { SkillPicker } from "./SkillPicker.js";
 import { SnapshotPicker } from "./SnapshotPicker.js";
 import { ChangesOverlay } from "./ChangesOverlay.js";
+import { ThemePicker } from "./ThemePicker.js";
+import { MemoryOverlay } from "./MemoryOverlay.js";
 import { UsagePanel } from "./UsagePanel.js";
 import { extractSelectedText, normalizeRect, type Rect } from "./select.js";
 import { StatusBar } from "./StatusBar.js";
 import { sessionTitle, setTerminalTitle } from "./title.js";
-import { DEFAULT_COLUMNS, DEFAULT_ROWS, theme } from "./theme.js";
+import { DEFAULT_COLUMNS, DEFAULT_ROWS, applyTheme, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "help" | "logout" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -183,6 +187,12 @@ export function App({
     noteTimer.current = setTimeout(() => setNote(""), 2000);
   }
 
+  useEffect(() => {
+    const loaded = loadInstructions(process.cwd());
+    if (loaded.projectPath) flashNote(`✓ ${loaded.projectPath.split("/").pop()} instructions loaded`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function costFor(model: string, tokens: { prompt: number; completion: number }): Promise<number | null> {
     if (activeConfig.provider !== "openrouter") return null;
     try {
@@ -267,6 +277,7 @@ export function App({
   const snapshots = useMemo(() => (overlay === "checkpoints" ? listSnapshots(process.cwd()) : []), [overlay]);
   const skillList = useMemo(() => (overlay === "skills" ? listSkills(process.cwd()) : []), [overlay]);
   const changedFiles = useMemo(() => (overlay === "changes" ? sessionChangedFiles(process.cwd()) : []), [overlay]);
+  const memoryFacts = useMemo(() => (overlay === "memory" ? readMemory() : []), [overlay]);
   const commandMatches = busy || overlay ? [] : filterCommands(input);
   const pathToken = busy || overlay || commandMatches.length > 0 ? null : (input.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? null);
 
@@ -705,6 +716,12 @@ export function App({
       case "/changes":
         openOverlay("changes");
         break;
+      case "/theme":
+        openOverlay("theme");
+        break;
+      case "/memory":
+        openOverlay("memory");
+        break;
       case "/model":
         if (matched.arg) switchModel(matched.arg);
         else openOverlay("model");
@@ -939,6 +956,20 @@ export function App({
         />
       ) : null}
       {overlay === "changes" ? <ChangesOverlay files={changedFiles} onClose={closeOverlay} /> : null}
+      {overlay === "memory" ? <MemoryOverlay facts={memoryFacts} onClose={closeOverlay} /> : null}
+      {overlay === "theme" ? (
+        <ThemePicker
+          onSelect={(name) => {
+            closeOverlay();
+            if (!name || name === activeConfig.theme) return;
+            applyTheme(name);
+            const next = { ...activeConfig, theme: name };
+            saveConfig(next);
+            setActiveConfig(next);
+            flashNote(`✓ Theme "${name}"`);
+          }}
+        />
+      ) : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
         <ModelPicker

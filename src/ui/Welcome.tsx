@@ -67,11 +67,11 @@ export function Splash({
         </Box>
       ) : null}
       {suggestions.length ? (
-        <Box flexDirection="column" width={boxWidth + 4}>
+        <Box flexDirection="column" width={boxWidth}>
           <Autocomplete commands={suggestions} selected={autoSelected} />
         </Box>
       ) : null}
-      <Box marginTop={1} flexDirection="column" width={boxWidth} borderStyle="round" borderColor={theme.accent} paddingX={1}>
+      <Box marginTop={suggestions.length ? 0 : 1} flexDirection="column" width={boxWidth} borderStyle="round" borderColor={theme.accent} paddingX={1}>
         {input ? (
           <Text>
             {input.slice(0, position)}

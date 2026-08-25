@@ -56,3 +56,40 @@ test("checkpoints chain newest-first and restore old file contents", async () =>
   assert.equal(run(["status", "--porcelain"]).split("\n").every((line) => line.startsWith("??") || line.includes("A ") || line.includes("M ")), true);
   assert.throws(() => run(["rev-parse", "HEAD"]), /HEAD/); // repo had no commits before
 });
+
+test("checkpoint pruning restarts the chain once it holds limit snapshots", async () => {
+  const pruneRoot = mkdtempSync(join(tmpdir(), "bajajbot-prune-"));
+  try {
+    execFileSync("git", ["init"], { cwd: pruneRoot });
+    execFileSync("git", ["config", "user.email", "test@test"], { cwd: pruneRoot });
+    execFileSync("git", ["config", "user.name", "test"], { cwd: pruneRoot });
+
+    writeFileSync(join(pruneRoot, "f.txt"), "1\n");
+    const first = await createSnapshot(pruneRoot, "one");
+    writeFileSync(join(pruneRoot, "f.txt"), "2\n");
+    const second = await createSnapshot(pruneRoot, "two");
+
+    // chain is full (limit 2): the next snapshot starts a fresh root,
+    // making the first two unreachable from the ref
+    writeFileSync(join(pruneRoot, "f.txt"), "3\n");
+    const third = await createSnapshot(pruneRoot, "three", { limit: 2 });
+    assert.ok(first && second && third);
+
+    const snapshots = listSnapshots(pruneRoot, 10);
+    assert.equal(snapshots.length, 1);
+    assert.equal(snapshots[0].sha, third);
+    assert.match(snapshots[0].label, /three/);
+
+    // restore still works on survivors; newest state is always intact
+    assert.equal(restoreSnapshot(pruneRoot, third), true);
+    assert.equal(readFileSync(join(pruneRoot, "f.txt"), "utf8"), "3\n");
+
+    // and the chain grows normally again after a restart
+    writeFileSync(join(pruneRoot, "f.txt"), "4\n");
+    await createSnapshot(pruneRoot, "four", { limit: 2 });
+    const regrown = listSnapshots(pruneRoot, 10);
+    assert.equal(regrown.length, 2);
+  } finally {
+    rmSync(pruneRoot, { recursive: true, force: true });
+  }
+});

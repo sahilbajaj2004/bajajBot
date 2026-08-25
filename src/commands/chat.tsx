@@ -8,6 +8,7 @@ import { printGoodbye, type ExitSummary } from "../ui/goodbye.js";
 import { setTerminalTitle } from "../ui/title.js";
 import { createSession } from "../session/history.js";
 import { checkForUpdate } from "../util/updateCheck.js";
+import { applyTheme } from "../ui/theme.js";
 import type { Session } from "../session/types.js";
 
 export async function startChat(session?: Session, initialPrompt?: string, version?: string): Promise<void> {
@@ -17,6 +18,7 @@ export async function startChat(session?: Session, initialPrompt?: string, versi
     if (!created) return;
   }
   const config = loadConfig();
+  applyTheme(config.theme);
   if (version) {
     void checkForUpdate(version).then((latest) => {
       if (latest) console.log(`⬆ bajajbot v${latest} available — npm install -g bajajbot@latest`);

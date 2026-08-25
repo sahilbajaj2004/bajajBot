@@ -14,6 +14,8 @@ export const COMMANDS: CommandDef[] = [
   { name: "/skills", description: "Browse skills · enter runs one now" },
   { name: "/checkpoints", description: "Browse git snapshots · restore files" },
   { name: "/changes", description: "Files the agent created/edited/deleted this session" },
+  { name: "/theme", description: "Switch the UI colorway" },
+  { name: "/memory", description: "What the agent remembers across sessions" },
   { name: "/sessions", description: "Resume a saved chat" },
   { name: "/usage", description: "Token and cost totals across all chats" },
   { name: "/profile", description: "Switch saved provider profile" },
