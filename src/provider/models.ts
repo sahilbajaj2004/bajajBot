@@ -11,14 +11,26 @@ export interface ModelInfo {
   pricing?: ModelPricing;
 }
 
+const MODEL_CACHE_TTL_MS = 5 * 60_000;
+const modelCache = new Map<string, { at: number; list: ModelInfo[] }>();
+
+export function clearModelCache(): void {
+  modelCache.clear();
+}
+
 export async function fetchModels(baseUrl: string, apiKey: string): Promise<ModelInfo[]> {
+  const key = `${normalizeBaseUrl(baseUrl)}::${apiKey ? "auth" : "anon"}`;
+  const cached = modelCache.get(key);
+  if (cached && Date.now() - cached.at < MODEL_CACHE_TTL_MS) return cached.list;
   const response = await fetch(`${normalizeBaseUrl(baseUrl)}/models`, {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw new Error(`API error ${response.status}: could not list models`);
   const data = (await response.json()) as { data?: ModelInfo[] };
-  return Array.isArray(data.data) ? data.data.filter((model) => typeof model?.id === "string") : [];
+  const list = Array.isArray(data.data) ? data.data.filter((model) => typeof model?.id === "string") : [];
+  modelCache.set(key, { at: Date.now(), list });
+  return list;
 }
 
 /** USD cost for a reply, from OpenRouter-style per-token pricing strings. */

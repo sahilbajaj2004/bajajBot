@@ -4,4 +4,5 @@ export const DEFAULT_ROWS = 24;
 export const theme = {
   accent: "#ff8c42",
   danger: "red",
+  success: "green",
 } as const;

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { basename, dirname, resolve } from "node:path";
 import type { ToolArgs, ToolContext, ToolDef } from "./types.js";
 import { expandHome } from "../util/paths.js";
+import { unifiedDiff } from "../util/diff.js";
 
 const MAX_READ = 60_000;
 const MAX_LIST = 500;
@@ -104,6 +105,17 @@ export const writeFile: ToolDef = {
     required: ["path", "content"],
   },
   summary: (args) => `${args.path} (${(args.content ?? "").split("\n").length} lines)`,
+  detail: (args, ctx) => {
+    try {
+      const full = resolvePath(ctx, args.path);
+      const existing = statSync(full, { throwIfNoEntry: false });
+      const oldText = existing?.isFile() ? readFileSync(full, "utf8") : "";
+      const content = typeof args.content === "string" ? args.content : "";
+      return unifiedDiff(oldText, content) || "(no changes)";
+    } catch {
+      return "(diff preview unavailable)";
+    }
+  },
   execute: (args, ctx) => {
     const full = resolvePath(ctx, text(args, "path"));
     const content = text(args, "content");
@@ -128,6 +140,17 @@ export const editFile: ToolDef = {
     required: ["path", "find", "replace"],
   },
   summary: (args) => `${args.path}: "${String(args.find ?? "").slice(0, 40)}" → "${String(args.replace ?? "").slice(0, 40)}"`,
+  detail: (args, ctx) => {
+    try {
+      const full = resolvePath(ctx, text(args, "path"));
+      const original = readFileSync(full, "utf8");
+      const find = text(args, "find");
+      const replace = typeof args.replace === "string" ? args.replace : "";
+      return unifiedDiff(original, original.split(find).join(replace)) || "(no changes)";
+    } catch {
+      return "(diff preview unavailable — the find string may be missing or ambiguous)";
+    }
+  },
   execute: (args, ctx) => {
     const full = resolvePath(ctx, text(args, "path"));
     if (!existsSync(full)) throw new Error(`Not found: ${args.path}`);

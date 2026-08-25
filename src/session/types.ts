@@ -10,6 +10,8 @@ export interface Message {
   timestamp: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
+  /** @path tokens from the user text whose file contents are sent to the model. */
+  attachments?: string[];
 }
 
 export interface Session {

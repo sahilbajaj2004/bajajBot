@@ -13,7 +13,16 @@ export function configExists(): boolean {
 
 export function loadConfig(): Config {
   if (!configExists()) throw new Error("Config missing. Run `bajajbot config init`.");
-  return JSON.parse(readFileSync(configPath(), "utf8")) as Config;
+  return readConfigAt(configPath());
+}
+
+export function readConfigAt(path: string): Config {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Config;
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`Config file ${path} is corrupted (${reason}). Fix or delete it, then run \`bajajbot config init\`.`);
+  }
 }
 
 export function saveConfig(config: Config): void {

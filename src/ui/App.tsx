@@ -7,11 +7,14 @@ import { removeConfig, saveConfig } from "../config/store.js";
 import { isAbortError, streamChat, type Usage } from "../provider/client.js";
 import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
 import { toMarkdown } from "../session/export.js";
+import { compactMessages, estimateTokens, tokenLimit } from "../session/compact.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
 import type { Message, Session, ToolCall } from "../session/types.js";
 import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
 import { restoreMutations } from "../tools/undo.js";
 import type { FileMutation, ToolContext } from "../tools/types.js";
+import { expandAttachments, extractAttachments } from "../util/attachments.js";
+import { listPathSuggestions } from "./pathSuggest.js";
 import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { copyToClipboard } from "./clipboard.js";
@@ -245,8 +248,25 @@ export function App({
 
   const busy = streaming !== null;
   const fresh = completed.length === 0;
-  const suggestions = busy || overlay ? [] : filterCommands(input);
+  const commandMatches = busy || overlay ? [] : filterCommands(input);
+  const pathToken = busy || overlay || commandMatches.length > 0 ? null : (input.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? null);
+
+  const [deferredToken, setDeferredToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (pathToken === null) {
+      setDeferredToken(null);
+      return;
+    }
+    const id = setTimeout(() => setDeferredToken(pathToken), 120);
+    return () => clearTimeout(id);
+  }, [pathToken]);
+
+  const pathMatches = deferredToken === null ? [] : listPathSuggestions(deferredToken, process.cwd());
+  const suggestions = commandMatches.length
+    ? commandMatches
+    : pathMatches.map((path) => ({ name: path, description: "attach file" }));
   const showAuto = suggestions.length > 0;
+  const commandMode = commandMatches.length > 0;
 
   useEffect(() => setAutoSelected(0), [input]);
 
@@ -314,12 +334,18 @@ export function App({
     }
     if (key.escape || key.tab && !showAuto) return;
     if (key.return) {
-      run(showAuto ? suggestions[Math.min(autoSelected, suggestions.length - 1)].name : input);
+      run(commandMode && showAuto ? suggestions[Math.min(autoSelected, suggestions.length - 1)].name : input);
       return;
     }
     if (key.tab && showAuto) {
-      const next = suggestions[autoSelected].name + " ";
-      write(next, next.length);
+      const picked = suggestions[Math.min(autoSelected, suggestions.length - 1)].name;
+      if (commandMode) {
+        write(picked + " ", picked.length + 1);
+      } else {
+        const head = pathToken === null ? input : input.slice(0, input.length - pathToken.length - 1);
+        const next = `${head}@${picked}${picked.endsWith("/") ? "" : " "}`;
+        write(next, next.length);
+      }
       return;
     }
     if (key.leftArrow) {
@@ -379,14 +405,25 @@ export function App({
     setScrollOffset(0);
     scrolledRef.current = false;
     rememberMessage(content);
+    const attachments = extractAttachments(content, process.cwd());
     await send([
       ...sessionRef.current.messages,
-      { role: "user", content, timestamp: new Date().toISOString() },
+      { role: "user", content, timestamp: new Date().toISOString(), ...(attachments.length ? { attachments } : {}) },
     ]);
   }
 
-  async function send(messages: Message[]): Promise<void> {
+  async function send(input: Message[]): Promise<void> {
     const startedAt = Date.now();
+    let messages = input;
+    if (estimateTokens(messages) > tokenLimit(activeConfig)) {
+      setStreaming("");
+      const result = await compactMessages({ ...activeConfig, defaultModel: sessionRef.current.model }, messages);
+      setStreaming(null);
+      if (result) {
+        messages = result.messages;
+        flashNote(`✓ Compacted ${result.removed} older message(s)`);
+      }
+    }
     const base: Session = { ...sessionRef.current, messages };
     sessionRef.current = base;
     setCompleted(messages);
@@ -490,12 +527,17 @@ export function App({
           content: activeConfig.systemPrompt?.trim() ? activeConfig.systemPrompt : systemPrompt(process.cwd()),
           timestamp: new Date().toISOString(),
         },
-        ...convo,
+        ...convo.map((message) =>
+          message.role === "user" && message.attachments?.length
+            ? { ...message, content: expandAttachments(message.content, message.attachments, process.cwd()) }
+            : message,
+        ),
       ];
       for await (const token of streamChat({ ...activeConfig, defaultModel: model }, payload, {
         signal: controller.signal,
         tools: toolSchemas(),
         onUsage,
+        onStatus: (message) => flashNote(message),
         onToolCalls: (calls) => {
           received = calls;
         },
@@ -807,12 +849,20 @@ export function App({
               <Overlay title="Allow action?">
                 <Text bold>{confirmRequest.title}</Text>
                 <Text> </Text>
-                {confirmRequest.detail.split("\n").slice(0, 6).map((line, index) => (
-                  <Text key={`${index}-${line.slice(0, 8)}`} dimColor>
-                    {"  "}
-                    {line.length > 100 ? `${line.slice(0, 100)}…` : line}
-                  </Text>
-                ))}
+                {confirmRequest.detail.split("\n").slice(0, 6).map((line, index) => {
+                  const added = line.startsWith("+ ");
+                  const removed = line.startsWith("- ");
+                  return (
+                    <Text
+                      key={`${index}-${line.slice(0, 8)}`}
+                      color={added ? theme.success : removed ? theme.danger : undefined}
+                      dimColor={!added && !removed}
+                    >
+                      {"  "}
+                      {line.length > 100 ? `${line.slice(0, 100)}…` : line}
+                    </Text>
+                  );
+                })}
                 <Text> </Text>
                 <Text dimColor>{"  "}y allow · n / esc deny</Text>
               </Overlay>

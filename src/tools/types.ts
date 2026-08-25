@@ -25,6 +25,8 @@ export interface ToolDef {
   parameters: Record<string, unknown>;
   risky: boolean;
   summary: (args: ToolArgs) => string;
+  /** Rich confirmation detail (e.g. a diff); falls back to the args dump. */
+  detail?: (args: ToolArgs, ctx: ToolContext) => string;
   execute: (args: ToolArgs, ctx: ToolContext) => Promise<string> | string;
 }
 

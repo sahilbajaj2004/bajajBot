@@ -14,17 +14,20 @@ npx bajajbot
 ## Features
 
 - Live token streaming in a clean terminal UI (Ink + React)
-- **Agent tools** — read, write, edit, delete files, list directories, run shell commands, and fetch web pages
+- **Agent tools** — read, write, edit, delete files, list directories, search file contents, run shell commands, and fetch web pages
 - Risky actions require explicit confirmation; nothing runs without your approval
 - Your choice of model and provider, switchable mid-chat with `/model` (type any model ID, even unlisted ones)
 - Saved provider profiles — switch endpoints with `/profile`
 - Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
+- Attach files with `@path` — type `explain @src/app.ts` and its contents are sent to the model automatically
 - Per-reply token usage and estimated cost (OpenRouter pricing)
-- First-run setup wizard — no config files to create manually
+- First-run setup wizard — verifies your key, endpoint and model against the live API before saving; no config files to create manually
 - Conversations saved locally and resumable any time
+- Auto-compaction — when a chat outgrows the token budget, older turns are AI-summarized into one bridge message so long sessions never hit the model's limit
 - Markdown replies with syntax-highlighted code
 - Mouse-wheel scrolling, drag-to-select text copying, PageUp/PageDown, and input history with arrow keys
 - Stop generation mid-stream with `Esc`
+- Automatic retry on rate limits and server errors — honors `Retry-After`, shows countdown notes, and turns raw API errors into plain-English hints (bad key, out of credit, wrong model ID)
 - API key masked in CLI output and stored only on your computer
 - Cross-platform: bash on macOS/Linux, cmd on Windows; drag-copy and mouse
   scrolling work in Windows Terminal, and clipboard falls back to
@@ -67,6 +70,7 @@ bajajbot config set-model <id>   # change the default model
 bajajbot config set temperature 0.7          # generation override (0-2)
 bajajbot config set maxTokens 4096           # cap reply length
 bajajbot config set systemPrompt "Be terse"  # replace the system prompt
+bajajbot config set contextTokens 8000       # auto-compact threshold (default 12000)
 bajajbot config unset temperature            # clear an override
 bajajbot profile save work       # save current provider settings as a profile
 bajajbot profile list            # list saved profiles
@@ -94,6 +98,20 @@ bajajbot logout                  # delete config and all sessions
 While the assistant is streaming you can keep typing — press Enter to queue
 messages; they send automatically when the reply finishes.
 
+## File mentions
+
+Prefix any path with `@` in your message to attach it:
+
+```text
+explain what @src/tools/fs.ts does
+refactor both @src/ui/App.tsx and @bin/bajajbot.ts
+```
+
+Paths resolve like the file tools (relative, absolute, or `~/…`). Only tokens
+that point at existing files are attached — stray `@mentions` are ignored.
+The chat shows your short message; the full contents travel to the model
+(truncated past 60k characters per file).
+
 ## Agent tools
 
 BajajBot's assistant can use these tools on your project directory:
@@ -102,6 +120,7 @@ BajajBot's assistant can use these tools on your project directory:
 | --- | --- | --- |
 | `read_file` | Read a text file | No |
 | `list_dir` | List a directory | No |
+| `search_files` | Regex-search file contents across a directory tree (skips `node_modules`/`.git`/binaries) | No |
 | `write_file` | Create or overwrite a file | Yes |
 | `edit_file` | Replace an exact snippet in a file | Yes |
 | `delete_path` | Permanently delete a file or directory | Yes |
@@ -109,11 +128,13 @@ BajajBot's assistant can use these tools on your project directory:
 | `fetch_url` | Fetch a web page or API endpoint | Yes |
 
 Every risky action shows a confirmation prompt before it runs — press `y` to
-allow or `n`/`Esc` to deny. File tools accept paths relative to the project,
-absolute paths, and `~/…` — writing or deleting **outside** the project
-directory is allowed but always goes through the confirmation prompt. File
-changes made during the last exchange can be reverted with `/undo` (deleted
-directories up to 500 files / 1 MB are restorable).
+allow or `n`/`Esc` to deny. File edits and overwrites preview a colorized
+diff (green additions, red removals) before you approve. File tools accept
+paths relative to the project, absolute paths, and `~/…` — writing or
+deleting **outside** the project directory is allowed but always goes through
+the confirmation prompt. File changes made during the last exchange can be
+reverted with `/undo` (deleted directories up to 500 files / 1 MB are
+restorable).
 
 ## Keyboard shortcuts
 
@@ -124,7 +145,7 @@ Esc              Interrupt streaming / close dialogs / deny action
 PgUp / PgDn      Scroll chat history (mouse wheel works too)
 Home / End       Jump to top / return to latest
 Ctrl+C           Exit (shows resume command for the session)
-Tab              Autocomplete slash commands
+Tab              Autocomplete slash commands and @file paths
 ```
 
 ## Copying messages

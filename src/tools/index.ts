@@ -1,9 +1,10 @@
 import type { ToolArgs, ToolContext, ToolDef, ToolSchema } from "./types.js";
 import { deletePath, editFile, listDir, readFile, writeFile } from "./fs.js";
 import { runCommand } from "./shell.js";
+import { searchFiles } from "./search.js";
 import { fetchUrl } from "./web.js";
 
-export const TOOLS: ToolDef[] = [readFile, listDir, writeFile, editFile, deletePath, runCommand, fetchUrl];
+export const TOOLS: ToolDef[] = [readFile, listDir, searchFiles, writeFile, editFile, deletePath, runCommand, fetchUrl];
 
 export function toolSchemas(): ToolSchema[] {
   return TOOLS.map((tool) => ({
@@ -16,8 +17,8 @@ export function systemPrompt(cwd: string): string {
   return [
     "You are bajajbot, an AI coding assistant running in the user's terminal.",
     `Working directory: ${cwd}`,
-    "You can use the provided tools to read files, explore directories, create and edit files, delete paths, run shell commands, and fetch web pages with fetch_url.",
-    "Paths are relative to the working directory, but absolute paths (e.g. ~/Downloads or /tmp) work too — writing outside the project just asks for confirmation. Always prefer the file tools over shell tricks like cat heredocs.",
+    "You can use the provided tools to read files, explore directories, search file contents with search_files, create and edit files, delete paths, run shell commands, and fetch web pages with fetch_url.",
+    "Paths are relative to the working directory, but absolute paths (e.g. ~/Downloads or /tmp) work too — writing outside the project just asks for confirmation. Always prefer the file tools over shell tricks like cat heredocs. Use search_files to locate code before reading or editing files.",
     "The UI asks the user for confirmation before risky actions; do not ask for permission yourself.",
     "After using tools, summarize what you did concisely.",
   ].join("\n");
@@ -37,7 +38,7 @@ export async function executeTool(call: { name: string; args: string }, ctx: Too
   if (!def) return `Error: unknown tool "${call.name}"`;
   const args = parseToolArgs(call.args);
   if (def.risky) {
-    const ok = await ctx.confirm(`${def.name} ${def.summary(args)}`, describe(args));
+    const ok = await ctx.confirm(`${def.name} ${def.summary(args)}`, def.detail?.(args, ctx) ?? describe(args));
     if (!ok) return "User denied this action.";
   }
   try {

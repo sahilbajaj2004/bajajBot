@@ -1,7 +1,8 @@
 import { Box, Text, useInput, useStdout } from "ink";
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { OPENROUTER_URL } from "../config/constants.js";
 import type { Config } from "../config/types.js";
+import { fetchModels } from "../provider/models.js";
 import { normalizeBaseUrl } from "../util/url.js";
 import { theme, DEFAULT_COLUMNS } from "./theme.js";
 import { BOT_START, LOGO_BOTTOM, LOGO_TOP } from "./logo.js";
@@ -95,6 +96,8 @@ export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void 
   const [defaultModel, setDefaultModel] = useState("");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const checkFailed = useRef(false);
 
   const provider = PROVIDERS[choice].id;
   const resolvedUrl = normalizeBaseUrl(baseUrl.trim() || (provider === "openrouter" ? OPENROUTER_URL : ""));
@@ -121,8 +124,36 @@ export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void 
     );
   };
 
+  const saveWithCheck = async (): Promise<void> => {
+    if (checking) return;
+    if (!checkFailed.current) {
+      setChecking(true);
+      setError("");
+      try {
+        const list = await fetchModels(resolvedUrl, apiKey.trim());
+        const model = defaultModel.trim();
+        if (list.length > 0 && model && !list.some((entry) => entry.id.toLowerCase() === model.toLowerCase())) {
+          setChecking(false);
+          const examples = list
+            .slice(0, 3)
+            .map((entry) => entry.id)
+            .join(", ");
+          return setError(`"${model}" is not on this endpoint. Try: ${examples} — or press enter again to save it anyway.`);
+        }
+      } catch (cause) {
+        setChecking(false);
+        checkFailed.current = true;
+        return setError(
+          `Could not verify the endpoint (${cause instanceof Error ? cause.message : String(cause)}). Press enter again to save anyway.`,
+        );
+      }
+      setChecking(false);
+    }
+    save();
+  };
+
   useInput((input, key) => {
-    if (saved) return;
+    if (saved || checking) return;
     if (key.ctrl && input === "c") return onFinish();
     if (key.escape) return onFinish();
 
@@ -166,7 +197,7 @@ export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void 
 
     if (step === 4) {
       if (key.tab && key.shift) return back();
-      if (key.return) return save();
+      if (key.return) return void saveWithCheck();
     }
   });
 
@@ -253,8 +284,13 @@ export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void 
                 <Row label="api key" value={maskedKey} />
                 <Row label="base url" value={resolvedUrl} />
                 <Row label="model" value={defaultModel.trim()} />
-                <Hint>enter save & launch · ⇧tab edit · esc exit</Hint>
+                <Hint>enter verify & save · ⇧tab edit · esc exit</Hint>
               </>
+            ) : null}
+            {checking ? (
+              <Box marginTop={1}>
+                <Text color={theme.accent}>{"  ⣟ Checking endpoint, key and model…"}</Text>
+              </Box>
             ) : null}
             {error ? (
               <Box marginTop={1}>

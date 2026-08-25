@@ -39,7 +39,53 @@ test("streamChat yields tokens and reports usage from the final chunk", async ()
 
 test("streamChat throws with status and body text on API errors", async () => {
   globalThis.fetch = (async () => new Response("bad key", { status: 401 })) as typeof fetch;
-  await assert.rejects(streamChat(config, []).next(), /API error 401: bad key/);
+  await assert.rejects(streamChat(config, []).next(), /API key rejected \(401\)/);
+});
+
+test("streamChat retries 429s and succeeds on a later attempt", async () => {
+  let calls = 0;
+  const statuses = [429, 429, 200];
+  globalThis.fetch = (async () => {
+    const status = statuses[Math.min(calls++, statuses.length - 1)];
+    return status === 200
+      ? new Response(sseBody(['data: {"choices":[{"delta":{"content":"ok"}}]}', "data: [DONE]"]), { status })
+      : new Response('{"error":{"message":"Rate limit exceeded"}}', { status });
+  }) as typeof fetch;
+  const notes: string[] = [];
+  const tokens: string[] = [];
+  for await (const token of streamChat(config, [], { retryDelays: [1, 1], onStatus: (note) => notes.push(note) })) {
+    tokens.push(token);
+  }
+  assert.equal(tokens.join(""), "ok");
+  assert.equal(calls, 3);
+  assert.match(notes[0], /rate limited — retrying in 0s \(attempt 1\/2\)/);
+});
+
+test("streamChat gives up after exhausting retries with a friendly message", async () => {
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response('{"error":{"message":"Too many requests"}}', { status: 429 });
+  }) as typeof fetch;
+  await assert.rejects(
+    streamChat(config, [], { retryDelays: [1] }).next(),
+    /Rate limited by the provider \(429\).*Too many requests/s,
+  );
+  assert.equal(calls, 2);
+});
+
+test("streamChat honors Retry-After seconds over the default backoff", async () => {
+  let calls = 0;
+  const startedAt = Date.now();
+  globalThis.fetch = (async () => {
+    calls++;
+    return calls === 1
+      ? new Response("slow down", { status: 429, headers: { "Retry-After": "1" } })
+      : new Response(sseBody(["data: [DONE]"]), { status: 200 });
+  }) as typeof fetch;
+  for await (const _token of streamChat(config, [], { retryDelays: [60000] })) break;
+  assert.ok(Date.now() - startedAt >= 900);
+  assert.equal(calls, 2);
 });
 
 test("aborting the signal rejects the stream mid-flight", async () => {

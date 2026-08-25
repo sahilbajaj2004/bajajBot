@@ -29,7 +29,7 @@ export function registerConfigCommands(program: Command): void {
 
   config
     .command("set <key> <value...>")
-    .description("Set temperature (0-2), maxTokens (int) or systemPrompt")
+    .description("Set temperature (0-2), maxTokens (int), systemPrompt or contextTokens")
     .action(async (key: string, value: string[]) => {
       const current = await ensureConfig();
       const text = value.join(" ").trim();
@@ -59,19 +59,28 @@ export function registerConfigCommands(program: Command): void {
         }
         saveConfig({ ...current, systemPrompt: text });
         console.log(`systemPrompt = "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`);
+      } else if (key === "contextTokens") {
+        const contextTokens = Number(text);
+        if (!Number.isInteger(contextTokens) || contextTokens < 1000) {
+          console.log("contextTokens must be an integer of at least 1000.");
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, contextTokens });
+        console.log(`contextTokens = ${contextTokens}`);
       } else {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt`);
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens`);
         process.exitCode = 1;
       }
     });
 
   config
     .command("unset <key>")
-    .description("Clear temperature, maxTokens or systemPrompt")
+    .description("Clear temperature, maxTokens, systemPrompt or contextTokens")
     .action(async (key: string) => {
       const current = await ensureConfig();
-      if (key !== "temperature" && key !== "maxTokens" && key !== "systemPrompt") {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt`);
+      if (key !== "temperature" && key !== "maxTokens" && key !== "systemPrompt" && key !== "contextTokens") {
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens`);
         process.exitCode = 1;
         return;
       }
