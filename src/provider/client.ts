@@ -145,6 +145,9 @@ function toApiMessage(message: Message): Record<string, unknown> {
   if (message.role === "tool") {
     return { role: "tool", tool_call_id: message.toolCallId ?? "", content: message.content };
   }
+  if (message.contentParts?.length) {
+    return { role: message.role, content: message.contentParts };
+  }
   return { role: message.role, content: message.content };
 }
 

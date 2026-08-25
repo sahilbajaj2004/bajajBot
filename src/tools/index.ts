@@ -3,8 +3,20 @@ import { deletePath, editFile, listDir, readFile, writeFile } from "./fs.js";
 import { runCommand } from "./shell.js";
 import { searchFiles } from "./search.js";
 import { fetchUrl } from "./web.js";
+import { listSkills, listSkillsTool, loadSkillTool } from "./skills.js";
 
-export const TOOLS: ToolDef[] = [readFile, listDir, searchFiles, writeFile, editFile, deletePath, runCommand, fetchUrl];
+export const TOOLS: ToolDef[] = [
+  readFile,
+  listDir,
+  searchFiles,
+  writeFile,
+  editFile,
+  deletePath,
+  runCommand,
+  fetchUrl,
+  listSkillsTool,
+  loadSkillTool,
+];
 
 export function toolSchemas(): ToolSchema[] {
   return TOOLS.map((tool) => ({
@@ -14,14 +26,21 @@ export function toolSchemas(): ToolSchema[] {
 }
 
 export function systemPrompt(cwd: string): string {
-  return [
+  const lines = [
     "You are bajajbot, an AI coding assistant running in the user's terminal.",
     `Working directory: ${cwd}`,
     "You can use the provided tools to read files, explore directories, search file contents with search_files, create and edit files, delete paths, run shell commands, and fetch web pages with fetch_url.",
     "Paths are relative to the working directory, but absolute paths (e.g. ~/Downloads or /tmp) work too — writing outside the project just asks for confirmation. Always prefer the file tools over shell tricks like cat heredocs. Use search_files to locate code before reading or editing files.",
     "The UI asks the user for confirmation before risky actions; do not ask for permission yourself.",
     "After using tools, summarize what you did concisely.",
-  ].join("\n");
+  ];
+  const skills = listSkills(cwd);
+  if (skills.length) {
+    lines.push(
+      `Skill playbooks are available: ${skills.map((skill) => `${skill.name} (${skill.description})`).join("; ")}. When the user's request matches a skill, call load_skill with its name first and follow its instructions.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 export function parseToolArgs(raw: string): ToolArgs {

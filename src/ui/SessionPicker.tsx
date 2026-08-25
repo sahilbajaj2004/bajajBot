@@ -8,7 +8,7 @@ export function SessionPicker({
   sessions,
   onSelect,
 }: {
-  sessions: { id: string; createdAt: string; preview: string }[];
+  sessions: { id: string; createdAt: string; title?: string; preview: string }[];
   onSelect: (id?: string) => void;
 }) {
   const [selected, setSelected] = useState(0);
@@ -32,7 +32,7 @@ export function SessionPicker({
         const isActive = start + index === active;
         return (
           <Text key={session.id} bold={isActive} color={isActive ? theme.accent : undefined}>
-            {` ${isActive ? "›" : " "} ${session.preview} `}
+            {` ${isActive ? "›" : " "} ${session.title ?? session.preview} `}
             <Text dimColor>· {session.id}</Text>
           </Text>
         );

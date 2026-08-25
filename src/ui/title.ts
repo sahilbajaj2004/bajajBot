@@ -13,3 +13,11 @@ export function sessionTitle(firstPrompt?: string): string {
   const name = firstPrompt ? clean(firstPrompt).slice(0, 60) : "";
   return name ? `BajajBot — ${name}` : "BajajBot";
 }
+
+/** Short session label from the first real user message (skips compaction bridges). */
+export function deriveSessionTitle(firstPrompt?: string): string | undefined {
+  if (!firstPrompt || firstPrompt.startsWith("[")) return undefined;
+  const name = clean(firstPrompt);
+  if (!name) return undefined;
+  return name.length > 48 ? `${name.slice(0, 47)}…` : name;
+}

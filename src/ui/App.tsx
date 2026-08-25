@@ -8,12 +8,17 @@ import { isAbortError, streamChat, type Usage } from "../provider/client.js";
 import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
 import { toMarkdown } from "../session/export.js";
 import { compactMessages, estimateTokens, tokenLimit } from "../session/compact.js";
+import { loadAllSessions } from "../session/history.js";
+import { addUsage, aggregateUsage, emptyUsage } from "../session/usage.js";
+import { deriveSessionTitle } from "./title.js";
 import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
 import type { Message, Session, ToolCall } from "../session/types.js";
 import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
+import { listSkills, readSkillFile } from "../tools/skills.js";
 import { restoreMutations } from "../tools/undo.js";
+import { createSnapshot, listSnapshots, restoreSnapshot } from "../tools/gitCheckpoints.js";
 import type { FileMutation, ToolContext } from "../tools/types.js";
-import { expandAttachments, extractAttachments } from "../util/attachments.js";
+import { buildVisionContent, extractAttachments } from "../util/attachments.js";
 import { listPathSuggestions } from "./pathSuggest.js";
 import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
@@ -26,6 +31,9 @@ import { Overlay } from "./Overlay.js";
 import { ProfilePicker } from "./ProfilePicker.js";
 import { SearchDialog, type SearchMatch } from "./SearchDialog.js";
 import { SessionPicker } from "./SessionPicker.js";
+import { SkillPicker } from "./SkillPicker.js";
+import { SnapshotPicker } from "./SnapshotPicker.js";
+import { UsagePanel } from "./UsagePanel.js";
 import { extractSelectedText, normalizeRect, type Rect } from "./select.js";
 import { StatusBar } from "./StatusBar.js";
 import { sessionTitle, setTerminalTitle } from "./title.js";
@@ -33,7 +41,7 @@ import { DEFAULT_COLUMNS, DEFAULT_ROWS, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "help" | "logout" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "help" | "logout" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -101,10 +109,12 @@ export function App({
   config,
   session: initialSession,
   mouse,
+  initialPrompt,
 }: {
   config: Config;
   session: Session;
   mouse?: MouseStdin;
+  initialPrompt?: string;
 }) {
   const [activeConfig, setActiveConfig] = useState<Config>(config);
   const [profileName, setProfileName] = useState("");
@@ -170,19 +180,16 @@ export function App({
     noteTimer.current = setTimeout(() => setNote(""), 2000);
   }
 
-  async function updateCost(model: string, usage: Usage): Promise<void> {
-    if (activeConfig.provider !== "openrouter") {
-      setCost(null);
-      return;
-    }
+  async function costFor(model: string, tokens: { prompt: number; completion: number }): Promise<number | null> {
+    if (activeConfig.provider !== "openrouter") return null;
     try {
       if (pricingRef.current === null) {
         const list = await fetchModels(activeConfig.baseUrl, activeConfig.apiKey);
         pricingRef.current = new Map(list.map((entry) => [entry.id, entry]));
       }
-      setCost(estimateCost(pricingRef.current.get(model), usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0));
+      return estimateCost(pricingRef.current.get(model), tokens.prompt, tokens.completion);
     } catch {
-      setCost(null);
+      return null;
     }
   }
 
@@ -280,6 +287,14 @@ export function App({
   useEffect(() => {
     setTerminalTitle(sessionTitle(firstPrompt));
   }, [firstPrompt]);
+
+  const launched = useRef(false);
+  useEffect(() => {
+    if (launched.current) return;
+    launched.current = true;
+    if (initialPrompt?.trim()) void submit(initialPrompt.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useInput((character, key) => {
     if (selection !== null || dragRef.current !== null) {
@@ -397,7 +412,7 @@ export function App({
     setHistoryIndex(null);
   }
 
-  async function submit(explicit?: string): Promise<void> {
+  async function submit(explicit?: string, forceAttachments?: string[]): Promise<void> {
     const content = (explicit ?? input).trim();
     if (!content) return;
     write("", 0);
@@ -405,10 +420,18 @@ export function App({
     setScrollOffset(0);
     scrolledRef.current = false;
     rememberMessage(content);
-    const attachments = extractAttachments(content, process.cwd());
+    const found = forceAttachments?.length
+      ? { texts: forceAttachments, images: [] as string[] }
+      : extractAttachments(content, process.cwd());
     await send([
       ...sessionRef.current.messages,
-      { role: "user", content, timestamp: new Date().toISOString(), ...(attachments.length ? { attachments } : {}) },
+      {
+        role: "user",
+        content,
+        timestamp: new Date().toISOString(),
+        ...(found.texts.length ? { attachments: found.texts } : {}),
+        ...(found.images.length ? { images: found.images } : {}),
+      },
     ]);
   }
 
@@ -425,6 +448,10 @@ export function App({
       }
     }
     const base: Session = { ...sessionRef.current, messages };
+    if (!base.title) {
+      const title = deriveSessionTitle(messages.find((message) => message.role === "user" && !message.content.startsWith("["))?.content);
+      if (title) base.title = title;
+    }
     sessionRef.current = base;
     setCompleted(messages);
     setSession(base);
@@ -442,11 +469,16 @@ export function App({
     let convo = [...messages];
     let failure = "";
     let usage: Usage | undefined;
+    const roundTokens = { prompt: 0, completion: 0 };
     let settled = false;
 
     try {
       for (let round = 0; round < MAX_ROUNDS && !controller.signal.aborted; round++) {
-        const calls = await streamRound(base.model, convo, controller, (value) => (usage = value));
+        const calls = await streamRound(base.model, convo, controller, (value) => {
+          usage = value;
+          roundTokens.prompt += value.prompt_tokens ?? 0;
+          roundTokens.completion += value.completion_tokens ?? 0;
+        });
         if (!bufferRef.current && !calls?.length && !controller.signal.aborted) {
           settled = true;
           break;
@@ -490,13 +522,37 @@ export function App({
       abortRef.current = null;
     }
 
-    saveSession({ ...base, messages: convo, updatedAt: new Date().toISOString() });
+    const hadTokens = roundTokens.prompt > 0 || roundTokens.completion > 0;
+    const replyCost = hadTokens ? await costFor(base.model, roundTokens) : null;
+    const finalSession: Session = {
+      ...base,
+      messages: convo,
+      updatedAt: new Date().toISOString(),
+      ...(hadTokens
+        ? {
+            usage: addUsage(base.usage ?? emptyUsage(), {
+              requests: 1,
+              promptTokens: roundTokens.prompt,
+              completionTokens: roundTokens.completion,
+              costUsd: replyCost ?? 0,
+            }),
+          }
+        : {}),
+    };
+    saveSession(finalSession);
     setCompleted(convo);
-    setSession({ ...base, messages: convo });
-    sessionRef.current = { ...base, messages: convo };
+    setSession(finalSession);
+    sessionRef.current = finalSession;
+    try {
+      const lastUser = [...convo].reverse().find((message) => message.role === "user");
+      const firstLine = (lastUser?.content ?? "turn").split("\n")[0];
+      createSnapshot(process.cwd(), firstLine.slice(0, 50) || "turn");
+    } catch {
+      // checkpoints are best-effort; never disturb the chat
+    }
     if (!scrolledRef.current) setScrollOffset(0);
     setTokens(usage?.completion_tokens != null ? usage.completion_tokens : null);
-    if (usage) void updateCost(base.model, usage);
+    if (replyCost !== null) setCost(replyCost);
     bufferRef.current = "";
     setStreaming(null);
     if (!failure && !controller.signal.aborted && Date.now() - startedAt > 3000) {
@@ -527,11 +583,15 @@ export function App({
           content: activeConfig.systemPrompt?.trim() ? activeConfig.systemPrompt : systemPrompt(process.cwd()),
           timestamp: new Date().toISOString(),
         },
-        ...convo.map((message) =>
-          message.role === "user" && message.attachments?.length
-            ? { ...message, content: expandAttachments(message.content, message.attachments, process.cwd()) }
-            : message,
-        ),
+        ...convo.map((message) => {
+          if (message.role !== "user") return message;
+          if (!message.attachments?.length && !message.images?.length) return message;
+          const built = buildVisionContent(message, process.cwd());
+          return {
+            ...message,
+            contentParts: typeof built === "string" ? [{ type: "text" as const, text: built }] : built,
+          };
+        }),
       ];
       for await (const token of streamChat({ ...activeConfig, defaultModel: model }, payload, {
         signal: controller.signal,
@@ -607,6 +667,15 @@ export function App({
     switch (matched.command.name) {
       case "/help":
         openOverlay("help");
+        break;
+      case "/usage":
+        openOverlay("usage");
+        break;
+      case "/skills":
+        openOverlay("skills");
+        break;
+      case "/checkpoints":
+        openOverlay("checkpoints");
         break;
       case "/model":
         if (matched.arg) switchModel(matched.arg);
@@ -804,9 +873,41 @@ export function App({
   return (
     <Box flexDirection="column">
       {fresh && !overlay && !confirmRequest ? (
-        <Splash config={activeConfig} input={input} cursor={cursor} rows={rows} columns={columns} />
+        <Splash
+          config={activeConfig}
+          input={input}
+          cursor={cursor}
+          rows={rows}
+          columns={columns}
+          suggestions={suggestions}
+          autoSelected={autoSelected}
+        />
       ) : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
+      {overlay === "usage" ? <Overlay title="Usage"><UsagePanel totals={aggregateUsage(loadAllSessions())} /></Overlay> : null}
+      {overlay === "skills" ? (
+        <SkillPicker
+          skills={listSkills(process.cwd())}
+          onSelect={(name) => {
+            closeOverlay();
+            if (!name) return;
+            const skill = listSkills(process.cwd()).find((entry) => entry.name === name);
+            if (!skill) return;
+            void submit(`Load and follow the "${skill.name}" skill exactly.`, [skill.path]);
+          }}
+        />
+      ) : null}
+      {overlay === "checkpoints" ? (
+        <SnapshotPicker
+          snapshots={listSnapshots(process.cwd())}
+          onRestore={(sha) => {
+            closeOverlay();
+            if (restoreSnapshot(process.cwd(), sha)) flashNote("✓ Restored checkpoint");
+            else setError("Checkpoint restore failed.");
+          }}
+          onClose={closeOverlay}
+        />
+      ) : null}
       {overlay === "logout" ? <LogoutDialog onClose={closeOverlay} onConfirm={logout} /> : null}
       {overlay === "model" ? (
         <ModelPicker config={activeConfig} onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }} />
@@ -881,7 +982,14 @@ export function App({
             </Text>
           ) : null}
           <InputBox value={input} cursor={cursor} active={!busy} />
-          <StatusBar model={session.model} tokens={tokens} streaming={busy} note={note || undefined} cost={cost} />
+          <StatusBar
+            model={session.model}
+            tokens={tokens}
+            streaming={busy}
+            note={note || undefined}
+            cost={cost}
+            contextPercent={Math.min(100, (estimateTokens(completed) / tokenLimit(activeConfig)) * 100)}
+          />
         </Box>
       ) : null}
     </Box>

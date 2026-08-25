@@ -14,15 +14,20 @@ npx bajajbot
 ## Features
 
 - Live token streaming in a clean terminal UI (Ink + React)
-- **Agent tools** — read, write, edit, delete files, list directories, search file contents, run shell commands, and fetch web pages
+- **Agent tools** — read, write, edit, delete files, list directories, search file contents, run shell commands, fetch web pages, and load skill playbooks
+- **Skills** — drop `.md` playbooks into `.bajajbot/skills/` (project) or `~/.bajajbot/skills/` (global); the assistant discovers them and follows them when relevant
 - Risky actions require explicit confirmation; nothing runs without your approval
 - Your choice of model and provider, switchable mid-chat with `/model` (type any model ID, even unlisted ones)
 - Saved provider profiles — switch endpoints with `/profile`
 - Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
-- Attach files with `@path` — type `explain @src/app.ts` and its contents are sent to the model automatically
+- Attach files with `@path` — type `explain @src/app.ts` and its contents are sent to the model automatically; `@diagram.png` sends images to vision models
 - Per-reply token usage and estimated cost (OpenRouter pricing)
 - First-run setup wizard — verifies your key, endpoint and model against the live API before saving; no config files to create manually
-- Conversations saved locally and resumable any time
+- Conversations saved locally and resumable any time, with auto-generated titles in the session picker
+- `/usage` dashboard — requests, tokens and estimated cost rolled up across all your saved chats, with a per-model breakdown
+- Non-interactive mode — `bajajbot -p "prompt"` (plus piped stdin) streams one answer and exits, with agent tools enabled; perfect for scripts and CI
+- Context meter in the status bar shows how full the model's context budget is (yellow near the limit, red at it — then auto-compaction kicks in)
+- Git checkpoints — every reply auto-snapshots your project to a hidden ref (pure plumbing: branch, index and stash untouched); browse and restore files with `/checkpoints`
 - Auto-compaction — when a chat outgrows the token budget, older turns are AI-summarized into one bridge message so long sessions never hit the model's limit
 - Markdown replies with syntax-highlighted code
 - Mouse-wheel scrolling, drag-to-select text copying, PageUp/PageDown, and input history with arrow keys
@@ -62,8 +67,13 @@ Configuration is saved at `~/.bajajbot/config.json` (Windows:
 
 ```sh
 bajajbot                         # start a new chat
+bajajbot "fix the bug"           # new chat that auto-sends your first message
+bajajbot -c                      # resume your most recent session
+bajajbot -c "continue with step 2"  # resume it and auto-send a follow-up
 bajajbot chat --resume <id>      # resume a saved chat directly
 bajajbot sessions                # pick a saved chat from a picker
+bajajbot -p "summarize this repo"          # one-shot answer, then exit
+cat error.log | bajajbot -p "root cause?"  # pipe stdin into a prompt
 bajajbot config init             # re-run the setup wizard
 bajajbot config show             # show config; API key stays masked
 bajajbot config set-model <id>   # change the default model
@@ -88,7 +98,10 @@ bajajbot logout                  # delete config and all sessions
 /undo            Remove the last exchange and revert its file changes
 /export          Save the chat to bajajbot-<session>.md (arg: json)
 /search <text>   Find text in this chat and jump to a match
+/skills          Browse installed skills · enter runs one immediately
+/checkpoints     Browse git file snapshots · restore after review
 /sessions        Resume a saved chat from an overlay
+/usage           Token & cost totals across all saved chats
 /profile         Switch a saved provider profile
 /new             Start a fresh chat
 /logout          Delete all config and sessions
@@ -105,12 +118,42 @@ Prefix any path with `@` in your message to attach it:
 ```text
 explain what @src/tools/fs.ts does
 refactor both @src/ui/App.tsx and @bin/bajajbot.ts
+what does this error screen show? @error.png
 ```
 
 Paths resolve like the file tools (relative, absolute, or `~/…`). Only tokens
 that point at existing files are attached — stray `@mentions` are ignored.
 The chat shows your short message; the full contents travel to the model
 (truncated past 60k characters per file).
+
+**Images** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) are sent as real image
+parts for vision-capable models, base64-encoded inline (up to 4 MB each).
+On text-only models the request will fail with the provider's error — switch
+to a vision model with `/model`.
+
+## Skills
+
+Teach bajajbot your team's playbooks. A skill is a markdown file:
+
+```markdown
+---
+description: Ship the app to production
+---
+# Deploy
+1. Run `npm test`
+2. `npm run build`
+3. `npm run deploy` and watch the health check
+```
+
+Save it as `.bajajbot/skills/deploy.md` in a project, or globally under
+`~/.bajajbot/skills/`. Skills installed for other coding agents work too —
+bajajbot also reads `<name>/SKILL.md` folders from `~/.claude/skills/`,
+`~/.agents/skills/` and `~/.codex/skills/`. Project skills override global
+ones with the same name. The assistant sees the skill names and
+descriptions in its system prompt and loads the full instructions with
+`load_skill` whenever your request matches — try "deploy to prod". Use the
+`/skills` command in chat to browse everything that's installed and run one
+immediately.
 
 ## Agent tools
 
@@ -126,6 +169,7 @@ BajajBot's assistant can use these tools on your project directory:
 | `delete_path` | Permanently delete a file or directory | Yes |
 | `run_command` | Run a shell command (bash/cmd) | Yes |
 | `fetch_url` | Fetch a web page or API endpoint | Yes |
+| `list_skills` / `load_skill` | Discover and follow skill playbooks (`.bajajbot/skills/*.md`) | No |
 
 Every risky action shows a confirmation prompt before it runs — press `y` to
 allow or `n`/`Esc` to deny. File edits and overwrites preview a colorized

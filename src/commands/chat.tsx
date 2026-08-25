@@ -9,7 +9,7 @@ import { setTerminalTitle } from "../ui/title.js";
 import { createSession } from "../session/history.js";
 import type { Session } from "../session/types.js";
 
-export async function startChat(session?: Session): Promise<void> {
+export async function startChat(session?: Session, initialPrompt?: string): Promise<void> {
   setTerminalTitle("BajajBot");
   if (!configExists()) {
     const created = await initConfig();
@@ -20,7 +20,12 @@ export async function startChat(session?: Session): Promise<void> {
   if (process.stdout.isTTY) process.stdout.write("\x1b[?1002h\x1b[?1006h");
   try {
     const result = (await render(
-      createElement(App, { config, session: session ?? createSession(config.defaultModel), mouse }),
+      createElement(App, {
+        config,
+        session: session ?? createSession(config.defaultModel),
+        mouse,
+        initialPrompt,
+      }),
       { stdin: mouse.stream as unknown as NodeJS.ReadStream, exitOnCtrlC: false },
     ).waitUntilExit()) as string | ExitSummary | undefined;
     if (typeof result === "string") {

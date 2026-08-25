@@ -21,7 +21,7 @@ export function loadSession(id: string): Session {
   return JSON.parse(readFileSync(sessionPath(id), "utf8")) as Session;
 }
 
-export function listSessions(): { id: string; createdAt: string; preview: string }[] {
+export function listSessions(): { id: string; createdAt: string; title?: string; preview: string }[] {
   if (!existsSync(sessionsDir())) return [];
   return readdirSync(sessionsDir())
     .filter((file) => file.endsWith(".json"))
@@ -30,6 +30,15 @@ export function listSessions(): { id: string; createdAt: string; preview: string
     .map((session) => ({
       id: session.id,
       createdAt: session.createdAt,
+      title: session.title,
       preview: session.messages.find((message) => message.role === "user")?.content.slice(0, 60) || "(empty chat)",
     }));
+}
+
+/** Every saved session, parsed in full (for the usage dashboard). */
+export function loadAllSessions(): Session[] {
+  if (!existsSync(sessionsDir())) return [];
+  return readdirSync(sessionsDir())
+    .filter((file) => file.endsWith(".json"))
+    .map((file) => JSON.parse(readFileSync(join(sessionsDir(), file), "utf8")) as Session);
 }
