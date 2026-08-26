@@ -22,11 +22,13 @@ export function WindowHint({ shown, total }: { shown: number; total: number }) {
 export function ModelPicker({
   config,
   onSelect,
-  onToggleFavorite,
+  title = "Select model",
+  recentModels = [],
 }: {
   config: Config;
   onSelect: (id?: string) => void;
-  onToggleFavorite?: (id: string) => void;
+  title?: string;
+  recentModels?: string[];
 }) {
   const [models, setModels] = useState<ModelInfo[] | null>(null);
   const [error, setError] = useState("");
@@ -52,11 +54,28 @@ export function ModelPicker({
   const hasExact = (models ?? []).some((model) => model.id.toLowerCase() === trimmed.toLowerCase());
   const customId =
     config.provider === "openrouter" && trimmed.length > 0 && !hasExact ? trimmed : null;
+
+  const showRecent = trimmed.length === 0 && recentModels.length > 0;
   const ordered = orderModels(models ?? [], config.favoriteModels);
-  const filtered = ordered.filter((entry) => entry.id.toLowerCase().includes(trimmed.toLowerCase()));
-  const rows: Array<{ id: string; custom?: boolean; favorite?: boolean }> = [
+
+  let filtered: Array<{ id: string; name?: string; pricing?: unknown; favorite: boolean }>;
+  if (showRecent) {
+    const modelSet = new Set(ordered.map((e) => e.id.toLowerCase()));
+    const recent = recentModels
+      .filter((id) => !modelSet.has(id.toLowerCase()))
+      .map((id) => ({ id, name: undefined, pricing: undefined, favorite: false }));
+    filtered = [...recent, ...ordered];
+  } else {
+    filtered = ordered.filter((entry) => entry.id.toLowerCase().includes(trimmed.toLowerCase()));
+  }
+
+  const rows: Array<{ id: string; custom?: boolean; favorite?: boolean; recent?: boolean }> = [
     ...(customId ? [{ id: customId, custom: true }] : []),
-    ...filtered.map((entry) => ({ id: entry.id, favorite: entry.favorite })),
+    ...filtered.map((entry) => ({
+      id: entry.id,
+      favorite: entry.favorite,
+      recent: showRecent && !entry.favorite && recentModels.includes(entry.id),
+    })),
   ];
   const active = Math.min(selected, Math.max(0, rows.length - 1));
   const { viewSize, start } = useWindow(rows.length, active);
@@ -68,10 +87,6 @@ export function ModelPicker({
     if (key.downArrow) return rows.length > 0 ? setSelected(Math.min(rows.length - 1, active + 1)) : undefined;
     if (key.pageUp) return rows.length > 0 ? setSelected(0) : undefined;
     if (key.pageDown) return rows.length > 0 ? setSelected(rows.length - 1) : undefined;
-    if (input === "f" && !manual && rows[active] && onToggleFavorite) {
-      onToggleFavorite(rows[active].id);
-      return;
-    }
     if (key.return) {
       if (manual) return query.trim() ? onSelect(query.trim()) : undefined;
       return rows.length > 0 ? onSelect(rows[active]?.id) : undefined;
@@ -83,7 +98,7 @@ export function ModelPicker({
   });
 
   return (
-    <Overlay title="Select model">
+    <Overlay title={title}>
       {models === null ? (
         <Text dimColor>Loading models…</Text>
       ) : manual ? (
@@ -102,7 +117,7 @@ export function ModelPicker({
               bold={isActive}
               color={isActive ? theme.accent : row.custom ? "green" : undefined}
             >
-              {` ${isActive ? "›" : " "}${row.favorite ? "★" : " "} ${row.custom ? `+ ${row.id}  (custom)` : row.id}`}
+              {` ${isActive ? "›" : " "}${row.favorite ? "★" : " "}${row.recent ? "↻" : " "} ${row.custom ? `+ ${row.id}  (custom)` : row.id}`}
             </Text>
           );
         })
@@ -116,7 +131,7 @@ export function ModelPicker({
       <WindowHint shown={viewSize} total={rows.length} />
       <Text dimColor>
         {config.provider === "openrouter"
-          ? "↑↓ select · f pin/unpin ★ · enter choose · type any model ID for + row · esc close"
+          ? "↑↓ select · enter choose · type any model ID for + row · esc close"
           : "↑↓ select · enter choose · esc close"}
       </Text>
     </Overlay>

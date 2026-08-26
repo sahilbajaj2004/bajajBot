@@ -27,7 +27,7 @@ import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { copyToClipboard } from "./clipboard.js";
 import { InputBox } from "./InputBox.js";
-import { ChatViewport, buildChatLines, wrapText, type Highlight } from "./MessageList.js";
+import { ChatViewport, buildChatLines, wrapText, type ChatLine, type Highlight } from "./MessageList.js";
 import type { MouseStdin } from "./mouse.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
@@ -49,8 +49,9 @@ import { cycleHistory } from "./history.js";
 import { notifyTurnDone } from "../util/notify.js";
 import { busyStatus } from "../util/busyStatus.js";
 import { contextualTip, rotatingTip } from "../util/tips.js";
+import { DOUBLE_ESC_MS, escAction } from "../util/esc.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | "compareModel" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -64,6 +65,20 @@ interface AsideEntry {
   q: string;
   a: string;
   pending: boolean;
+}
+
+/** A "/compare" A/B entry — two models answer the same question side by side. */
+interface AbEntry {
+  id: number;
+  q: string;
+  modelA: string;
+  modelB: string;
+  a?: string;
+  b?: string;
+  msA?: number;
+  msB?: number;
+  attachments?: string[];
+  images?: string[];
 }
 
 /** Short preview of the last user prompt for the done-notification. */
@@ -163,6 +178,11 @@ export function App({
   const [plan, setPlan] = useState<PlanItem[]>(initialSession.plan ?? []);
   const [asides, setAsides] = useState<AsideEntry[]>([]);
   const asideSeqRef = useRef(0);
+  const asideAbortRef = useRef<AbortController | null>(null);
+  const escArmRef = useRef<number | null>(null);
+  const [ab, setAb] = useState<AbEntry | null>(null);
+  const abSeqRef = useRef(0);
+  const pendingCompareRef = useRef("");
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
@@ -201,10 +221,10 @@ export function App({
     };
   }, [stdout]);
 
-  function flashNote(text: string): void {
+  function flashNote(text: string, durationMs = 2000): void {
     setNote(text);
     if (noteTimer.current) clearTimeout(noteTimer.current);
-    noteTimer.current = setTimeout(() => setNote(""), 2000);
+    noteTimer.current = setTimeout(() => setNote(""), durationMs);
   }
 
   useEffect(() => {
@@ -298,6 +318,19 @@ export function App({
   const skillList = useMemo(() => (overlay === "skills" ? listSkills(process.cwd()) : []), [overlay]);
   const changedFiles = useMemo(() => (overlay === "changes" ? sessionChangedFiles(process.cwd()) : []), [overlay]);
   const memoryFacts = useMemo(() => (overlay === "memory" ? readMemory() : []), [overlay]);
+  const recentModels = useMemo(() => {
+    if (overlay !== "model") return [];
+    const sessions = loadAllSessions();
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const s of sessions.sort((a, b) => (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt))) {
+      if (!seen.has(s.model)) {
+        seen.add(s.model);
+        result.push(s.model);
+      }
+    }
+    return result.slice(0, 8);
+  }, [overlay]);
   const commandMatches = busy || overlay ? [] : filterCommands(input);
   const pathToken = busy || overlay || commandMatches.length > 0 ? null : (input.match(/(?:^|\s)@([^\s]*)$/)?.[1] ?? null);
 
@@ -355,6 +388,17 @@ export function App({
       else request.resolve(false);
       return;
     }
+    if (ab) {
+      if (key.escape) {
+        setAb(null);
+        flashNote("A/B discarded");
+        return;
+      }
+      const ch = character?.toLowerCase();
+      if (ch === "1" || ch === "a") { resolveAb("a"); return; }
+      if (ch === "2" || ch === "b") { resolveAb("b"); return; }
+      return;
+    }
     if (overlay === "usage" && key.escape) {
       closeOverlay();
       return;
@@ -380,7 +424,21 @@ export function App({
     }
     if (busy) {
       if (key.escape) {
-        abortRef.current?.abort();
+        if (asides.some((entry) => entry.pending)) {
+          asideAbortRef.current?.abort();
+          setAsides((prev) => prev.filter((entry) => !entry.pending));
+          escArmRef.current = null;
+          flashNote("✓ Side question cancelled");
+          return;
+        }
+        const now = Date.now();
+        if (escAction(escArmRef.current, now) === "abort") {
+          escArmRef.current = null;
+          abortRef.current?.abort();
+          return;
+        }
+        escArmRef.current = now + DOUBLE_ESC_MS;
+        flashNote("⚠ tap esc again to interrupt", DOUBLE_ESC_MS + 500);
         return;
       }
       if (key.return) {
@@ -496,6 +554,8 @@ export function App({
     write("", 0);
     const id = ++asideSeqRef.current;
     setAsides((prev) => [...prev, { id, q, a: "", pending: true }]);
+    const controller = new AbortController();
+    asideAbortRef.current = controller;
     try {
       const answer = await completeChat(
         { ...activeConfig, defaultModel: sessionRef.current.model },
@@ -510,6 +570,7 @@ export function App({
           ...sessionRef.current.messages,
           { role: "user", content: `btw: ${q}`, timestamp: new Date().toISOString() },
         ],
+        { signal: controller.signal },
       );
       setAsides((prev) =>
         prev.map((entry) => (entry.id === id ? { ...entry, a: answer, pending: false } : entry)),
@@ -518,6 +579,81 @@ export function App({
       setAsides((prev) => prev.filter((entry) => entry.id !== id));
       if (!isAbortError(cause)) setError(cause instanceof Error ? cause.message : String(cause));
     }
+  }
+
+  /** Resolve a pending A/B comparison: keep one answer, discard the other. */
+  function resolveAb(side: "a" | "b"): void {
+    const entry = ab;
+    if (!entry) return;
+    const answer = side === "a" ? entry.a : entry.b;
+    if (!answer) {
+      flashNote(`Still waiting on ${side.toUpperCase()}…`);
+      return;
+    }
+    const userMsg: Message = {
+      role: "user",
+      content: entry.q,
+      timestamp: new Date().toISOString(),
+      ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
+      ...(entry.images?.length ? { images: entry.images } : {}),
+    };
+    const replyMsg: Message = {
+      role: "assistant",
+      content: answer,
+      timestamp: new Date().toISOString(),
+    };
+    const messages = [...sessionRef.current.messages, userMsg, replyMsg];
+    let next: Session = { ...sessionRef.current, messages, updatedAt: new Date().toISOString() };
+    if (!next.title) {
+      const title = deriveSessionTitle(entry.q);
+      if (title) next.title = title;
+    }
+    saveSession(next);
+    sessionRef.current = next;
+    setCompleted(messages);
+    setSession(next);
+    setAb(null);
+    flashNote(`✓ Kept ${side.toUpperCase()} · ${side === "a" ? entry.modelA : entry.modelB}`);
+  }
+
+  /** Kick off parallel A/B comparison once model B is chosen. */
+  function startCompare(question: string, modelB: string): void {
+    const q = question.trim();
+    if (!q) return;
+    write("", 0);
+    rememberMessage(q);
+    const { texts: textParts, images: imageParts } = extractAttachments(q, process.cwd());
+    const id = ++abSeqRef.current;
+    const convoSnapshot = [...sessionRef.current.messages];
+    const userMsg: Message = {
+      role: "user",
+      content: q,
+      timestamp: new Date().toISOString(),
+      ...(textParts.length ? { attachments: textParts } : {}),
+      ...(imageParts.length ? { images: imageParts } : {}),
+    };
+    const system: Message = {
+      role: "system",
+      timestamp: new Date().toISOString(),
+      content: activeConfig.systemPrompt?.trim() ? activeConfig.systemPrompt : systemPrompt(process.cwd()),
+    };
+    const payload: Message[] = [system, ...convoSnapshot, userMsg];
+    const modelA = sessionRef.current.model;
+    setAb({ id, q, modelA, modelB, attachments: textParts.length ? textParts : undefined, images: imageParts.length ? imageParts : undefined });
+    const runSide = async (key: "a" | "b", model: string) => {
+      const t0 = Date.now();
+      try {
+        const answer = await completeChat(
+          { ...activeConfig, defaultModel: model },
+          payload,
+        );
+        setAb((prev) => (prev?.id === id ? { ...prev, [key]: answer, [`${key}Ms`]: Date.now() - t0 } : prev));
+      } catch (cause) {
+        const msg = cause instanceof Error ? cause.message : String(cause);
+        setAb((prev) => (prev?.id === id ? { ...prev, [key]: `(error) ${msg}`, [`${key}Ms`]: Date.now() - t0 } : prev));
+      }
+    };
+    void Promise.allSettled([runSide("a", modelA), runSide("b", modelB)]);
   }
 
   async function send(input: Message[]): Promise<void> {
@@ -887,6 +1023,20 @@ export function App({
       case "/btw":
         void fireAside(trimmed.replace(/^\/btw\b\s*/i, ""));
         break;
+      case "/compare": {
+        const question = trimmed.replace(/^\/compare\b\s*/i, "");
+        if (!question) {
+          setError("Usage: /compare <question> — picks a second model, compares answers.");
+          break;
+        }
+        if (busy || ab) {
+          flashNote("⚠ finish the current turn first");
+          break;
+        }
+        pendingCompareRef.current = question;
+        openOverlay("compareModel");
+        break;
+      }
       case "/sessions":
         openOverlay("sessions");
         break;
@@ -959,8 +1109,61 @@ export function App({
         lines.push({ key: `${base}s`, node: <Text> </Text>, text: " ", messageIndex: -1 });
       }
     });
+    if (ab) {
+      const base = `ab${ab.id}`;
+      const hasAnswer = (s: "a" | "b") => (s === "a" ? ab.a : ab.b) !== undefined;
+      const elapsed = (ms?: number) => (ms != null ? ` · ${(ms / 1000).toFixed(1)}s` : "");
+      const tok = (text?: string) => (text ? ` · ~${Math.ceil(text.length / 4)} tok` : "");
+      const sideBlock = (s: "a" | "b") => {
+        const model = s === "a" ? ab.modelA : ab.modelB;
+        const answer = s === "a" ? ab.a : ab.b;
+        const ms = s === "a" ? ab.msA : ab.msB;
+        const pending = answer === undefined;
+        const tag = pending ? "…thinking" : `${elapsed(ms)}${tok(answer ?? "")}`;
+        const rows: ChatLine[] = [
+          {
+            key: `${base}${s}h`,
+            node: <Text dimColor>{`  ${s.toUpperCase()} · ${model}${tag}`}</Text>,
+            text: `  ${s.toUpperCase()} · ${model}${tag}`,
+            messageIndex: -1,
+          },
+        ];
+        if (!pending) {
+          wrapText(answer!, Math.max(columns - 6, 16)).forEach((row, ri) => {
+            rows.push({
+              key: `${base}${s}r${ri}`,
+              node: <Text>{row}</Text>,
+              text: row,
+              messageIndex: -1,
+            });
+          });
+        }
+        return rows;
+      };
+      lines.push({
+        key: `${base}q`,
+        node: <Text dimColor>{`  ⚡ A/B · ${ab.q}`}</Text>,
+        text: `  ⚡ A/B · ${ab.q}`,
+        messageIndex: -1,
+      });
+      lines.push(...sideBlock("a"), ...sideBlock("b"));
+      const bothDone = hasAnswer("a") && hasAnswer("b");
+      lines.push({
+        key: `${base}hint`,
+        node: (
+          <Text dimColor>
+            {bothDone
+              ? "  [1] keep A · [2] keep B · esc discards"
+              : "  …waiting for both answers"}
+          </Text>
+        ),
+        text: bothDone ? "  [1] keep A · [2] keep B · esc discards" : "  …waiting",
+        messageIndex: -1,
+      });
+      lines.push({ key: `${base}s`, node: <Text> </Text>, text: " ", messageIndex: -1 });
+    }
     return lines;
-  }, [completed, columns, streaming, asides]);
+  }, [completed, columns, streaming, asides, ab]);
   const chatBudget = Math.max(
     rows -
       CHAT_RESERVED_ROWS -
@@ -1090,15 +1293,14 @@ export function App({
         <ModelPicker
           config={activeConfig}
           onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }}
-          onToggleFavorite={(id) => {
-            const favorites = activeConfig.favoriteModels ?? [];
-            const next = favorites.some((entry) => entry.toLowerCase() === id.toLowerCase())
-              ? favorites.filter((entry) => entry.toLowerCase() !== id.toLowerCase())
-              : [...favorites, id];
-            const nextConfig = { ...activeConfig, favoriteModels: next };
-            saveConfig(nextConfig);
-            setActiveConfig(nextConfig);
-          }}
+          recentModels={recentModels}
+        />
+      ) : null}
+      {overlay === "compareModel" ? (
+        <ModelPicker
+          config={activeConfig}
+          title="Compare against…"
+          onSelect={(id) => { closeOverlay(); if (id) startCompare(pendingCompareRef.current, id); }}
         />
       ) : null}
       {overlay === "profile" ? (
@@ -1168,7 +1370,7 @@ export function App({
             </Text>
             <Text dimColor>
               {queued > 0 ? ` · ${queued} queued` : ""}
-              {busyElapsedSecs > 10 ? " · /btw to ask aside" : ""} · esc to interrupt
+              {busyElapsedSecs > 10 ? " · /btw to ask aside" : ""} · esc ×2 to interrupt
             </Text>
             </Text>
           ) : null}

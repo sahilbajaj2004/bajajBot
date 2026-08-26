@@ -68,7 +68,7 @@ export function StatusBar({
               <>
                 <Text color="yellow">● streaming</Text>
                 {" · "}
-                <Text bold>esc interrupt</Text>
+                <Text bold>esc ×2 interrupt</Text>
                 {" · "}
               </>
             ) : null}
