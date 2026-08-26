@@ -2,7 +2,7 @@ import type { ToolArgs, ToolContext, ToolDef, ToolSchema } from "./types.js";
 import { deletePath, editFile, listDir, readFile, writeFile } from "./fs.js";
 import { runCommand } from "./shell.js";
 import { searchFiles } from "./search.js";
-import { fetchUrl } from "./web.js";
+import { fetchUrl, webSearchTool } from "./web.js";
 import { listSkills, listSkillsTool, loadSkillTool } from "./skills.js";
 import { setPlanTool } from "./plan.js";
 import { instructionsBlock } from "./instructions.js";
@@ -17,6 +17,7 @@ export const TOOLS: ToolDef[] = [
   deletePath,
   runCommand,
   fetchUrl,
+  webSearchTool,
   listSkillsTool,
   loadSkillTool,
   setPlanTool,

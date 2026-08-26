@@ -111,6 +111,7 @@ saving. Configuration lives at `~/.bajajbot/config.json`.
 | `favoriteModels` | comma-separated IDs | Models pinned ★ to the top of the `/model` picker |
 | `checkpointLimit` | integer ≥ 2 | Max git snapshots kept per project; when full, the chain restarts and old ones are reclaimed by git GC (default 300) |
 | `theme` | theme name | UI colorway — one of `ember` (default), `ocean`, `matrix`, `rose`, `violet`, `mono`. Also switchable live with `/theme` |
+| `webSearch` | object | Backend for the agent's `web_search` tool: `{ "provider": "duckduckgo" \| "brave" \| "tavily" \| "searxng", "apiKey": "...", "searxUrl": "..." }` — default is keyless DuckDuckGo; Brave/Tavily need a free API key, SearXNG your instance URL |
 
 Example:
 

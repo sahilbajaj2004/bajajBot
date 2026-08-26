@@ -27,4 +27,10 @@ export interface Config {
   theme?: string;
   /** Saved provider profiles, switchable with /profile or `bajajbot profile use`. */
   profiles?: Record<string, Profile>;
+  /** Web search backend for the agent's web_search tool. Default: duckduckgo (no key). */
+  webSearch?: {
+    provider: "duckduckgo" | "brave" | "tavily" | "searxng";
+    apiKey?: string;
+    searxUrl?: string;
+  };
 }

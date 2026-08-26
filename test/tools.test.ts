@@ -23,6 +23,7 @@ test("tool schemas expose every tool with a function signature", () => {
     "delete_path",
     "run_command",
     "fetch_url",
+    "web_search",
     "list_skills",
     "load_skill",
     "set_plan",
