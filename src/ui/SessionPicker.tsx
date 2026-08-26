@@ -7,9 +7,12 @@ import { useWindow, WindowHint } from "./ModelPicker.js";
 export function SessionPicker({
   sessions,
   onSelect,
+  currentId,
 }: {
   sessions: { id: string; createdAt: string; title?: string; preview: string }[];
   onSelect: (id?: string) => void;
+  /** The open session, marked in the list. */
+  currentId?: string;
 }) {
   const [selected, setSelected] = useState(0);
   const active = Math.min(selected, Math.max(0, sessions.length - 1));
@@ -34,6 +37,7 @@ export function SessionPicker({
           <Text key={session.id} bold={isActive} color={isActive ? theme.accent : undefined}>
             {` ${isActive ? "›" : " "} ${session.title ?? session.preview} `}
             <Text dimColor>· {session.id}</Text>
+            {session.id === currentId ? <Text bold color={theme.success}> · current</Text> : null}
           </Text>
         );
       })}

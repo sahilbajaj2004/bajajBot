@@ -5,6 +5,7 @@ import { filterCommands, matchCommand } from "../src/ui/commands.js";
 test("filterCommands matches command prefixes", () => {
   assert.deepEqual(filterCommands("/").map((command) => command.name), [
     "/help",
+    "/btw",
     "/model",
     "/copy",
     "/retry",

@@ -5,6 +5,7 @@ export interface CommandDef {
 
 export const COMMANDS: CommandDef[] = [
   { name: "/help", description: "Show available commands" },
+  { name: "/btw", description: "Side question — answered instantly, not added to the chat" },
   { name: "/model", description: "Switch model (no arg opens picker)" },
   { name: "/copy", description: "Copy last assistant reply to clipboard" },
   { name: "/retry", description: "Regenerate the last assistant reply" },

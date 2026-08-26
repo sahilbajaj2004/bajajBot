@@ -21,3 +21,8 @@ export function deriveSessionTitle(firstPrompt?: string): string | undefined {
   if (!name) return undefined;
   return name.length > 48 ? `${name.slice(0, 47)}…` : name;
 }
+
+/** Compact "#fc68"-style badge for a session id like "ses_fc68a88d…". */
+export function shortSessionId(id: string): string {
+  return id.replace(/^ses_?/i, "").slice(0, 4);
+}

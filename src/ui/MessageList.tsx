@@ -21,7 +21,7 @@ export interface Highlight {
   full: boolean;
 }
 
-function wrapText(text: string, width: number): string[] {
+export function wrapText(text: string, width: number): string[] {
   const out: string[] = [];
   for (const raw of text.split("\n")) {
     if (raw.trim() === "") {

@@ -19,6 +19,8 @@ npx bajajbot
 - **Skills** — markdown playbooks from `.bajajbot/skills/`, plus folders installed for other agents (`~/.claude`, `~/.agents`, `~/.codex`)
 - **Project instructions** — drop a `BAJAJBOT.md` in your repo (or `~/.bajajbot/BAJAJBOT.md` for global rules); its contents are injected into every system prompt automatically
 - **Persistent memory** — the agent saves durable facts (your prefs, project conventions) to `~/.bajajbot/memory.md` and recalls them in every future session; inspect anytime with `/memory`
+- **Done notifications** — replies that take 3+ seconds ring the terminal bell and pop a desktop notification (OSC 9/777, tmux-aware), so you can switch windows while it works
+- **`/btw` side questions** — ask "btw, why?" mid-task and get an instant aside without derailing the running agent; the status bar teaches context-aware command hints as you go
 - **File & image mentions** — type `@src/app.ts` to attach code, `@error.png` to attach images for vision models, with Tab autocomplete
 - Risky actions require explicit confirmation with a colorized diff preview; nothing runs without your approval
 - Any model, switchable mid-chat with `/model`; ★ pin favorites; saved provider profiles
@@ -129,6 +131,7 @@ bajajbot config unset temperature
 | `/changes` | — | List files the agent created/edited/deleted this session (A/M/D color-coded) |
 | `/theme` | — | Pick a UI colorway (arrow keys, live preview swatches); saved to your config |
 | `/usage` | — | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
+| `/btw <question>` | required | Instant side question — answered in 1–2 sentences even mid-task, never enters the chat history |
 | `/copy` | — | Copy the last assistant reply to the clipboard |
 | `/retry` | — | Regenerate the last assistant reply |
 | `/undo` | — | Remove the last exchange and revert its file changes |

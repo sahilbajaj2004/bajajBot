@@ -1,5 +1,6 @@
 import { Box, Text, useStdout } from "ink";
 import { DEFAULT_COLUMNS, theme } from "./theme.js";
+import { shortSessionId } from "./title.js";
 
 export function StatusBar({
   model,
@@ -8,6 +9,9 @@ export function StatusBar({
   note,
   cost,
   contextPercent,
+  sessionId,
+  sessionTitle,
+  tip,
 }: {
   model: string;
   tokens: number | null;
@@ -16,9 +20,16 @@ export function StatusBar({
   cost?: number | null;
   /** Estimated share of the context budget in use (0-100+). */
   contextPercent?: number;
+  /** Open session id — rendered as a "#fc68"-style badge. */
+  sessionId?: string;
+  /** Auto-derived conversation title (shown on wide terminals). */
+  sessionTitle?: string;
+  /** Contextual command hint replacing the static copy hint. */
+  tip?: string;
 }) {
   const { stdout } = useStdout();
   const wide = (stdout.columns ?? DEFAULT_COLUMNS) >= 70;
+  const extraWide = (stdout.columns ?? DEFAULT_COLUMNS) >= 104;
   const money =
     cost == null || cost <= 0 ? "" : `$${cost >= 0.01 ? cost.toFixed(2) : cost.toFixed(4)} · `;
   const gauge =
@@ -38,6 +49,14 @@ export function StatusBar({
         <Text>
           <Text bold color={theme.accent}>Welcome to </Text>
           <Text bold>bajajbot</Text>
+          {sessionId ? (
+            <Text dimColor>
+              {` · #${shortSessionId(sessionId)}`}
+              {extraWide && sessionTitle
+                ? ` · ${sessionTitle.length > 24 ? `${sessionTitle.slice(0, 23)}…` : sessionTitle}`
+                : ""}
+            </Text>
+          ) : null}
           <Text dimColor> · {model}</Text>
           {gauge}
         </Text>
@@ -55,7 +74,7 @@ export function StatusBar({
             ) : null}
             {tokens !== null ? `${tokens.toLocaleString()} tok · ` : ""}
             {money}
-            {wide ? "drag text to copy · ctrl+c exit" : ""}
+            {wide ? `${tip ?? "drag text to copy"} · ctrl+c exit` : ""}
           </Text>
         )}
       </Box>

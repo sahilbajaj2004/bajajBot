@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Config } from "../config/types.js";
 import { removeConfig, saveConfig } from "../config/store.js";
-import { isAbortError, streamChat, type Usage } from "../provider/client.js";
+import { completeChat, isAbortError, streamChat, type Usage } from "../provider/client.js";
 import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
 import { toMarkdown } from "../session/export.js";
 import { compactMessages, estimateTokens, tokenLimit } from "../session/compact.js";
@@ -27,7 +27,7 @@ import { Autocomplete } from "./Autocomplete.js";
 import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
 import { copyToClipboard } from "./clipboard.js";
 import { InputBox } from "./InputBox.js";
-import { ChatViewport, buildChatLines, type Highlight } from "./MessageList.js";
+import { ChatViewport, buildChatLines, wrapText, type Highlight } from "./MessageList.js";
 import type { MouseStdin } from "./mouse.js";
 import { ModelPicker } from "./ModelPicker.js";
 import { Overlay } from "./Overlay.js";
@@ -46,6 +46,9 @@ import { sessionTitle, setTerminalTitle } from "./title.js";
 import { DEFAULT_COLUMNS, DEFAULT_ROWS, applyTheme, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
+import { notifyTurnDone } from "../util/notify.js";
+import { busyStatus } from "../util/busyStatus.js";
+import { contextualTip, rotatingTip } from "../util/tips.js";
 
 type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | null;
 
@@ -53,6 +56,20 @@ interface ConfirmRequest {
   title: string;
   detail: string;
   resolve: (allowed: boolean) => void;
+}
+
+/** A "/btw" side question and its answer — ephemeral, never persisted. */
+interface AsideEntry {
+  id: number;
+  q: string;
+  a: string;
+  pending: boolean;
+}
+
+/** Short preview of the last user prompt for the done-notification. */
+function firstWords(convo: Message[]): string {
+  const lastUser = [...convo].reverse().find((message) => message.role === "user");
+  return (lastUser?.content ?? "").split("\n")[0].split(" ").slice(0, 6).join(" ");
 }
 
 const MAX_ROUNDS = 10;
@@ -144,9 +161,12 @@ export function App({
   const [note, setNote] = useState("");
   const [queued, setQueued] = useState(0);
   const [plan, setPlan] = useState<PlanItem[]>(initialSession.plan ?? []);
+  const [asides, setAsides] = useState<AsideEntry[]>([]);
+  const asideSeqRef = useRef(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
+  const turnStartRef = useRef<number | null>(null);
   const inputRef = useRef("");
   const cursorRef = useRef(0);
   const scrolledRef = useRef(false);
@@ -335,6 +355,10 @@ export function App({
       else request.resolve(false);
       return;
     }
+    if (overlay === "usage" && key.escape) {
+      closeOverlay();
+      return;
+    }
     if (overlay) return;
     if (key.pageUp) {
       scrolledRef.current = true;
@@ -361,6 +385,10 @@ export function App({
       }
       if (key.return) {
         const content = input.trim();
+        if (/^\/btw\b/i.test(content)) {
+          void fireAside(content.replace(/^\/btw\b\s*/i, ""));
+          return;
+        }
         if (content) {
           queueRef.current.push(content);
           setQueued(queueRef.current.length);
@@ -458,8 +486,43 @@ export function App({
     ]);
   }
 
+  /** "/btw" — instant side question; the answer never joins the conversation. */
+  async function fireAside(question: string): Promise<void> {
+    const q = question.trim();
+    if (!q) {
+      setError("Usage: /btw <question> — quick side answer, not added to the chat.");
+      return;
+    }
+    write("", 0);
+    const id = ++asideSeqRef.current;
+    setAsides((prev) => [...prev, { id, q, a: "", pending: true }]);
+    try {
+      const answer = await completeChat(
+        { ...activeConfig, defaultModel: sessionRef.current.model },
+        [
+          {
+            role: "system",
+            timestamp: new Date().toISOString(),
+            content:
+              systemPrompt(process.cwd()) +
+              '\n\nYou are answering a quick side question prefixed "btw:". Reply in one or two plain sentences. It is an aside, not a task: never use tools and never take action.',
+          },
+          ...sessionRef.current.messages,
+          { role: "user", content: `btw: ${q}`, timestamp: new Date().toISOString() },
+        ],
+      );
+      setAsides((prev) =>
+        prev.map((entry) => (entry.id === id ? { ...entry, a: answer, pending: false } : entry)),
+      );
+    } catch (cause) {
+      setAsides((prev) => prev.filter((entry) => entry.id !== id));
+      if (!isAbortError(cause)) setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
   async function send(input: Message[]): Promise<void> {
     const startedAt = Date.now();
+    turnStartRef.current = startedAt;
     let messages = input;
     if (estimateTokens(messages) > tokenLimit(activeConfig)) {
       setStreaming("");
@@ -588,10 +651,11 @@ export function App({
       flashNote(`⚠ Session spend crossed $${limit.toFixed(2)}`);
     }
     bufferRef.current = "";
+    turnStartRef.current = null;
     setStreaming(null);
-    if (!failure && !controller.signal.aborted && Date.now() - startedAt > 3000) {
-      stdoutRef.current?.write("\x07");
-      flashNote("✓ Reply ready");
+    if (!controller.signal.aborted && Date.now() - startedAt > 3000) {
+      notifyTurnDone(!failure, firstWords(convo));
+      if (!failure) flashNote("✓ Reply ready");
     }
     setError(failure);
     lastTurnMutationsRef.current = mutations;
@@ -669,6 +733,7 @@ export function App({
       setSession(loaded);
       setCompleted(loaded.messages);
       setPlan(loaded.plan ?? []);
+      setAsides([]);
       setTokens(null);
       setCost(null);
       setError("");
@@ -682,6 +747,7 @@ export function App({
     setSession(fresh);
     setCompleted([]);
     setPlan([]);
+    setAsides([]);
     setTokens(null);
     setCost(null);
     setError("");
@@ -818,6 +884,9 @@ export function App({
         openOverlay("search");
         break;
       }
+      case "/btw":
+        void fireAside(trimmed.replace(/^\/btw\b\s*/i, ""));
+        break;
       case "/sessions":
         openOverlay("sessions");
         break;
@@ -856,8 +925,42 @@ export function App({
       streaming !== null && streaming.length > 0
         ? [...completed, { role: "assistant", content: streaming, timestamp: new Date().toISOString() }]
         : completed;
-    return buildChatLines(messages, columns);
-  }, [completed, columns, streaming]);
+    const lines = buildChatLines(messages, columns);
+    asides.forEach((entry, asideIndex) => {
+      const base = `a${entry.id}`;
+      lines.push({
+        key: `${base}q`,
+        node: <Text dimColor>{`  btw · ${entry.q}`}</Text>,
+        text: `  btw · ${entry.q}`,
+        messageIndex: -1,
+      });
+      if (entry.pending) {
+        lines.push({
+          key: `${base}p`,
+          node: <Text dimColor>{"  …thinking"}</Text>,
+          text: "  …thinking",
+          messageIndex: -1,
+        });
+      } else {
+        wrapText(entry.a, Math.max(columns - 6, 16)).forEach((row, rowIndex) => {
+          lines.push({
+            key: `${base}r${rowIndex}`,
+            node: (
+              <Text dimColor>
+                <Text italic>{row}</Text>
+              </Text>
+            ),
+            text: row,
+            messageIndex: -1,
+          });
+        });
+      }
+      if (asideIndex < asides.length - 1) {
+        lines.push({ key: `${base}s`, node: <Text> </Text>, text: " ", messageIndex: -1 });
+      }
+    });
+    return lines;
+  }, [completed, columns, streaming, asides]);
   const chatBudget = Math.max(
     rows -
       CHAT_RESERVED_ROWS -
@@ -873,6 +976,13 @@ export function App({
     Math.max(0, chat.length - offset),
   );
   const showChatBody = !overlay && (!fresh || confirmRequest !== null);
+  const busyElapsedSecs = turnStartRef.current != null ? (Date.now() - turnStartRef.current) / 1000 : 0;
+  const ctxPercent = Math.min(100, (estimateTokens(completed) / tokenLimit(activeConfig)) * 100);
+  const statusTip = error
+    ? contextualTip({ errored: true })
+    : ctxPercent >= 70
+      ? contextualTip({ contextPercent: ctxPercent })
+      : rotatingTip(completed.length);
 
   // Screen-row geometry of the chat viewport (bottom-anchored stack below it).
   const planRows = plan.length ? Math.min(plan.length, 5) + 1 : 0; // board + header
@@ -931,7 +1041,12 @@ export function App({
         />
       ) : null}
       {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
-      {overlay === "usage" && usageTotals ? <Overlay title="Usage"><UsagePanel totals={usageTotals} /></Overlay> : null}
+      {overlay === "usage" && usageTotals ? (
+        <Overlay title="Usage">
+          <UsagePanel totals={usageTotals} />
+          <Text dimColor>esc close</Text>
+        </Overlay>
+      ) : null}
       {overlay === "skills" ? (
         <SkillPicker
           skills={skillList}
@@ -992,6 +1107,7 @@ export function App({
       {overlay === "sessions" ? (
         <SessionPicker
           sessions={sessionRows}
+          currentId={session.id}
           onSelect={(id) => {
             closeOverlay();
             if (id) resume(id);
@@ -1047,12 +1163,13 @@ export function App({
           {error ? <Text color={theme.danger}>✗ {error}</Text> : null}
           {busy ? (
             <Text>
-              <Text color={theme.accent}>
-                {`  ${SPINNER_FRAMES[blink % SPINNER_FRAMES.length]} Working…`}
-              </Text>
-              <Text dimColor>
-                {queued > 0 ? ` · ${queued} queued` : ""} · esc to interrupt
-              </Text>
+            <Text color={theme.accent}>
+              {`  ${SPINNER_FRAMES[blink % SPINNER_FRAMES.length]} ${busyStatus(busyElapsedSecs, streaming?.length ?? 0)}`}
+            </Text>
+            <Text dimColor>
+              {queued > 0 ? ` · ${queued} queued` : ""}
+              {busyElapsedSecs > 10 ? " · /btw to ask aside" : ""} · esc to interrupt
+            </Text>
             </Text>
           ) : null}
           {plan.length ? <PlanBoard plan={plan} /> : null}
@@ -1063,7 +1180,10 @@ export function App({
             streaming={busy}
             note={note || undefined}
             cost={cost}
-            contextPercent={Math.min(100, (estimateTokens(completed) / tokenLimit(activeConfig)) * 100)}
+            sessionId={session.id}
+            sessionTitle={session.title}
+            tip={statusTip}
+            contextPercent={ctxPercent}
           />
         </Box>
       ) : null}
