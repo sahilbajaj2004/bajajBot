@@ -50,7 +50,7 @@ export default function Hero() {
         </Reveal>
 
         <Reveal delay={0.1} y={26}>
-          <div className="mx-auto mt-14 max-w-2xl">
+          <div className="mx-auto mt-14 max-w-3xl">
             <TerminalDemo />
           </div>
         </Reveal>

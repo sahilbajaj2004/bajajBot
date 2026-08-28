@@ -20,6 +20,10 @@ export const metadata = {
       "A terminal AI coding assistant for any OpenAI-compatible model. npx bajajbot.",
     type: "website",
   },
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({ children }) {

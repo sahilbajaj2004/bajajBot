@@ -2,7 +2,16 @@ export default function Footer() {
   const year = new Date().getFullYear();
   return (
     <footer className="border-t border-line bg-panel">
-      <div className="mx-auto max-w-6xl px-5 py-14">
+      <div className="mx-auto max-w-6xl px-5 pt-14">
+        <p
+          aria-hidden="true"
+          className="select-none text-center text-[clamp(3rem,14vw,10.5rem)] font-semibold leading-[0.95] tracking-tighter text-faint/20"
+        >
+          <span className="align-middle text-[0.35em] text-ember">❯</span>
+          bajajbot
+        </p>
+
+        <div className="mt-12 border-t border-line pt-10">
         <div className="flex flex-col justify-between gap-10 md:flex-row">
           <div className="max-w-xs">
             <p className="flex items-baseline gap-2 text-lg font-semibold tracking-tight">
@@ -71,6 +80,7 @@ export default function Footer() {
           <p>
             <span className="text-ember">$</span> npm install -g bajajbot
           </p>
+        </div>
         </div>
       </div>
     </footer>
