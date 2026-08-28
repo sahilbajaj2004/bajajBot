@@ -22,11 +22,13 @@ export function WindowHint({ shown, total }: { shown: number; total: number }) {
 export function ModelPicker({
   config,
   onSelect,
+  onToggleFavorite,
   title = "Select model",
   recentModels = [],
 }: {
   config: Config;
   onSelect: (id?: string) => void;
+  onToggleFavorite?: (id: string) => void;
   title?: string;
   recentModels?: string[];
 }) {
@@ -87,6 +89,10 @@ export function ModelPicker({
     if (key.downArrow) return rows.length > 0 ? setSelected(Math.min(rows.length - 1, active + 1)) : undefined;
     if (key.pageUp) return rows.length > 0 ? setSelected(0) : undefined;
     if (key.pageDown) return rows.length > 0 ? setSelected(rows.length - 1) : undefined;
+    if (key.ctrl && input?.toLowerCase() === "f" && !manual && rows[active] && onToggleFavorite) {
+      onToggleFavorite(rows[active].id);
+      return;
+    }
     if (key.return) {
       if (manual) return query.trim() ? onSelect(query.trim()) : undefined;
       return rows.length > 0 ? onSelect(rows[active]?.id) : undefined;
@@ -131,7 +137,7 @@ export function ModelPicker({
       <WindowHint shown={viewSize} total={rows.length} />
       <Text dimColor>
         {config.provider === "openrouter"
-          ? "↑↓ select · enter choose · type any model ID for + row · esc close"
+          ? "↑↓ select · ctrl+f pin/unpin ★ · enter choose · type any model ID for + row · esc close"
           : "↑↓ select · enter choose · esc close"}
       </Text>
     </Overlay>

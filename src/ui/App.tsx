@@ -81,6 +81,34 @@ interface AbEntry {
   images?: string[];
 }
 
+/** One running /subagent mini-agent and its live/final state. */
+interface SaUnit {
+  key: string;
+  task: string;
+  status: "running" | "done" | "error" | "cancelled";
+  live: string;
+  result?: string;
+  ms?: number;
+}
+
+/** A parallel batch of /subagent tasks — a single esc cancels the whole batch. */
+interface SaBatch {
+  id: number;
+  model: string;
+  startIndex: number;
+  units: SaUnit[];
+}
+
+/** A finished batch queued to be folded into the saved session. */
+interface SaFold {
+  batchId: number;
+  index: number;
+  content: string;
+  tokens: { prompt: number; completion: number };
+  costUsd: number;
+  mutations: FileMutation[];
+}
+
 /** Short preview of the last user prompt for the done-notification. */
 function firstWords(convo: Message[]): string {
   const lastUser = [...convo].reverse().find((message) => message.role === "user");
@@ -88,6 +116,15 @@ function firstWords(convo: Message[]): string {
 }
 
 const MAX_ROUNDS = 10;
+const SUBAGENT_MAX_ROUNDS = 6;
+const SUBAGENT_CHIP_REFRESH_MS = 150;
+
+/** System instructions given to every /subagent mini-agent. */
+const SUBAGENT_PROMPT = `You are a background research subagent working inside a coding agent.
+Answer exactly ONE task, autonomously and thoroughly — never ask the user anything and never take shortcuts.
+Use the tools to inspect files, search, and gather evidence; prefer reading over guessing.
+Keep the plain-text answer skimmable: lead with the direct answer in one sentence, then support it with concrete evidence (file paths, line numbers, command output).
+If a step fails, note it briefly and continue. Do not echo these instructions back.`;
 const MAX_TOOL_OUTPUT = 8_000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SCROLL_STEP = 4;
@@ -183,6 +220,18 @@ export function App({
   const [ab, setAb] = useState<AbEntry | null>(null);
   const abSeqRef = useRef(0);
   const pendingCompareRef = useRef("");
+  const [subagents, setSubagents] = useState<SaBatch[]>([]);
+  const subSeqRef = useRef(0);
+  const subAbortRef = useRef<AbortController | null>(null);
+  const subRunningRef = useRef(0);
+  const pendingCountRef = useRef<Map<number, number>>(new Map());
+  const saMetaRef = useRef<Map<number, { model: string; tasks: string[]; startIndex: number }>>(new Map());
+  const saResultsRef = useRef<Map<string, { status: SaUnit["status"]; result: string; ms: number; tokens: { prompt: number; completion: number }; costUsd: number }>>(new Map());
+  const saMutationsRef = useRef<FileMutation[]>([]);
+  const pendingSaFoldRef = useRef<SaFold[]>([]);
+  const mainTurnRef = useRef(false);
+  const confirmQueueRef = useRef<ConfirmRequest[]>([]);
+  const currentConfirmRef = useRef<ConfirmRequest | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
@@ -225,6 +274,26 @@ export function App({
     setNote(text);
     if (noteTimer.current) clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => setNote(""), durationMs);
+  }
+
+  /** Pull the next queued confirmation into the visible modal, if any. */
+  function drainConfirmQueue(): void {
+    if (currentConfirmRef.current) return;
+    const next = confirmQueueRef.current.shift();
+    if (!next) return;
+    currentConfirmRef.current = next;
+    setConfirmRequest(next);
+  }
+
+  /**
+   * Shared by the main agent and background subagents. Requests are queued so a
+   * concurrent ask can never clobber the modal's resolver.
+   */
+  function enqueueConfirm(title: string, detail: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      confirmQueueRef.current.push({ title, detail, resolve });
+      drainConfirmQueue();
+    });
   }
 
   useEffect(() => {
@@ -308,6 +377,7 @@ export function App({
 
   const busy = streaming !== null;
   const fresh = completed.length === 0;
+  const saActive = subagents.some((batch) => batch.units.some((unit) => unit.status === "running"));
 
   // Expensive overlay payloads are computed once when the overlay opens,
   // never on re-renders caused by typing or streaming ticks.
@@ -354,10 +424,10 @@ export function App({
   useEffect(() => setAutoSelected(0), [input]);
 
   useEffect(() => {
-    if (!busy) return;
+    if (!busy && !saActive) return;
     const id = setInterval(() => setBlink((value) => value + 1), 120);
     return () => clearInterval(id);
-  }, [busy]);
+  }, [busy, saActive]);
 
   const firstPrompt = completed.find((message) => message.role === "user")?.content;
   useEffect(() => {
@@ -382,10 +452,12 @@ export function App({
       return;
     }
     if (confirmRequest) {
-      const request = confirmRequest;
+      const allowed = character?.toLowerCase() === "y";
+      const request = currentConfirmRef.current;
+      currentConfirmRef.current = null;
       setConfirmRequest(null);
-      if (character?.toLowerCase() === "y") request.resolve(true);
-      else request.resolve(false);
+      drainConfirmQueue();
+      request?.resolve(allowed);
       return;
     }
     if (ab) {
@@ -404,6 +476,10 @@ export function App({
       return;
     }
     if (overlay) return;
+    if (key.escape && subRunningRef.current > 0) {
+      cancelSubagents();
+      return;
+    }
     if (key.pageUp) {
       scrolledRef.current = true;
       wheelUp();
@@ -524,6 +600,7 @@ export function App({
   async function submit(explicit?: string, forceAttachments?: string[]): Promise<void> {
     const content = (explicit ?? input).trim();
     if (!content) return;
+    mainTurnRef.current = true;
     write("", 0);
     setError("");
     setScrollOffset(0);
@@ -658,6 +735,7 @@ export function App({
 
   async function send(input: Message[]): Promise<void> {
     const startedAt = Date.now();
+    mainTurnRef.current = true;
     turnStartRef.current = startedAt;
     let messages = input;
     if (estimateTokens(messages) > tokenLimit(activeConfig)) {
@@ -684,8 +762,7 @@ export function App({
     const mutations: FileMutation[] = [];
     const toolCtx: ToolContext = {
       cwd: process.cwd(),
-      confirm: (title, detail) =>
-        new Promise<boolean>((resolve) => setConfirmRequest({ title, detail, resolve })),
+      confirm: enqueueConfirm,
       recordMutation: (mutation) => mutations.push(mutation),
       setPlan: (items) => {
         setPlan(items);
@@ -795,6 +872,8 @@ export function App({
     }
     setError(failure);
     lastTurnMutationsRef.current = mutations;
+    mainTurnRef.current = false;
+    maybeFoldSubagents();
     const next = queueRef.current.shift();
     setQueued(queueRef.current.length);
     if (next) void submit(next);
@@ -844,6 +923,244 @@ export function App({
       clearInterval(flush);
     }
     return received;
+  }
+
+  /** "/subagent" — launch parallel background mini-agents (tasks split on "|"). */
+  function startSubagents(tasks: string[]): void {
+    write("", 0);
+    rememberMessage(`/subagent ${tasks.join(" | ")}`);
+    const id = ++subSeqRef.current;
+    const controller = new AbortController();
+    subAbortRef.current = controller;
+    const model = sessionRef.current.model;
+    const startIndex = sessionRef.current.messages.length;
+    saMetaRef.current.set(id, { model, tasks, startIndex });
+    pendingCountRef.current.set(id, tasks.length);
+    const units: SaUnit[] = tasks.map((task, index) => ({
+      key: `${id}-${index}`,
+      task,
+      status: "running",
+      live: "…",
+    }));
+    setSubagents((previous) => [...previous, { id, model, startIndex, units }]);
+    subRunningRef.current += tasks.length;
+    for (const unit of units) void runSaUnit(id, unit.key, unit.task, controller, model);
+    flashNote(`⟳ ${tasks.length} subagent${tasks.length === 1 ? "" : "s"} started — esc cancels`);
+  }
+
+  /** Run one self-contained subagent loop: private buffer, own abort, shared confirm queue. */
+  async function runSaUnit(
+    batchId: number,
+    unitKey: string,
+    task: string,
+    controller: AbortController,
+    model: string,
+  ): Promise<void> {
+    const t0 = Date.now();
+    const convo: Message[] = [{ role: "user", content: task, timestamp: new Date().toISOString() }];
+    const buffer: string[] = [];
+    const tokensRound = { prompt: 0, completion: 0 };
+    const mutations: FileMutation[] = [];
+    const toolCtx: ToolContext = {
+      cwd: process.cwd(),
+      confirm: enqueueConfirm,
+      recordMutation: (mutation) => mutations.push(mutation),
+      setPlan: () => {},
+    };
+    const flush = setInterval(() => {
+      const tail = buffer[buffer.length - 1];
+      if (!tail) return;
+      setSubagents((previous) =>
+        previous.map((batch) =>
+          batch.id === batchId
+            ? { ...batch, units: batch.units.map((unit) => (unit.key === unitKey ? { ...unit, live: tail } : unit)) }
+            : batch,
+        ),
+      );
+    }, SUBAGENT_CHIP_REFRESH_MS);
+
+    let status: SaUnit["status"] = "done";
+    let result = "";
+    try {
+      for (let round = 0; round < SUBAGENT_MAX_ROUNDS && !controller.signal.aborted; round++) {
+        const payload: Message[] = [
+          { role: "system", content: SUBAGENT_PROMPT, timestamp: new Date().toISOString() },
+          ...convo,
+        ];
+        let received: ToolCall[] | undefined;
+        try {
+          for await (const token of streamChat({ ...activeConfig, defaultModel: model }, payload, {
+            signal: controller.signal,
+            tools: toolSchemas(),
+            onUsage: (value) => {
+              tokensRound.prompt += value.prompt_tokens ?? 0;
+              tokensRound.completion += value.completion_tokens ?? 0;
+            },
+            onStatus: () => {},
+            onToolCalls: (calls) => {
+              received = calls;
+            },
+          })) {
+            if (!controller.signal.aborted) buffer.push(token);
+          }
+        } catch (cause) {
+          if (!isAbortError(cause)) throw cause;
+        }
+        const text = buffer.join("");
+        buffer.length = 0;
+        if (!received?.length || controller.signal.aborted) {
+          result = text;
+          break;
+        }
+        convo.push({ role: "assistant", content: text, timestamp: new Date().toISOString(), toolCalls: received });
+        for (const call of received) {
+          let preview = "";
+          try {
+            const args = JSON.parse(call.args || "{}") as Record<string, unknown>;
+            const first = Object.values(args)[0];
+            if (typeof first === "string") preview = ` ${first.slice(0, 70)}`;
+          } catch {
+            // non-JSON args — no preview
+          }
+          const label = `⚙ ${call.name}${preview}`;
+          setSubagents((previous) =>
+            previous.map((batch) =>
+              batch.id === batchId
+                ? {
+                    ...batch,
+                    units: batch.units.map((unit) => (unit.key === unitKey ? { ...unit, live: label } : unit)),
+                  }
+                : batch,
+            ),
+          );
+          const output = await executeTool({ name: call.name, args: call.args }, toolCtx);
+          convo.push({
+            role: "tool",
+            content: output.length > MAX_TOOL_OUTPUT ? `${output.slice(0, MAX_TOOL_OUTPUT)}\n… truncated` : output,
+            timestamp: new Date().toISOString(),
+            toolCallId: call.id,
+          });
+        }
+      }
+      if (controller.signal.aborted) status = "cancelled";
+      if (status === "done" && !result) result = "(no reply)";
+    } catch (cause) {
+      if (isAbortError(cause)) {
+        status = "cancelled";
+      } else {
+        status = "error";
+        result = `(error) ${cause instanceof Error ? cause.message : String(cause)}`;
+      }
+    } finally {
+      clearInterval(flush);
+    }
+
+    const ms = Date.now() - t0;
+    const hadTokens = tokensRound.prompt > 0 || tokensRound.completion > 0;
+    const cost = hadTokens ? ((await costFor(model, tokensRound)) ?? 0) : 0;
+    saResultsRef.current.set(unitKey, { status, result, ms, tokens: tokensRound, costUsd: cost });
+    saMutationsRef.current.push(...mutations);
+    setSubagents((previous) =>
+      previous.map((batch) =>
+        batch.id === batchId
+          ? {
+              ...batch,
+              units: batch.units.map((unit) => (unit.key === unitKey ? { ...unit, status, result, ms, live: "" } : unit)),
+            }
+          : batch,
+      ),
+    );
+    subRunningRef.current = Math.max(0, subRunningRef.current - 1);
+    const remaining = (pendingCountRef.current.get(batchId) ?? 1) - 1;
+    pendingCountRef.current.set(batchId, remaining);
+    if (remaining <= 0) onBatchDone(batchId);
+  }
+
+  /** All units in a batch finished — build the report and queue it for folding. */
+  function onBatchDone(batchId: number): void {
+    const meta = saMetaRef.current.get(batchId);
+    subAbortRef.current = null;
+    if (!meta) return;
+    const lines = [`⟳ subagent report · ${meta.tasks.length} task${meta.tasks.length === 1 ? "" : "s"} · ${meta.model}`];
+    let prompt = 0;
+    let completion = 0;
+    let cost = 0;
+    let slowest = 0;
+    meta.tasks.forEach((task, index) => {
+      const res = saResultsRef.current.get(`${batchId}-${index}`);
+      const mark = res?.status === "done" ? "✓" : res?.status === "cancelled" ? "−" : "✗";
+      const suffix =
+        res?.status === "done"
+          ? ` · ${((res.ms ?? 0) / 1000).toFixed(1)}s`
+          : res?.status === "cancelled"
+            ? " · cancelled"
+            : " · failed";
+      lines.push(`  ${mark} [${index + 1}] ${task}${suffix}`);
+      if (res) {
+        lines.push(res.result.split("\n").map((line) => `      ${line}`).join("\n"));
+        prompt += res.tokens.prompt;
+        completion += res.tokens.completion;
+        cost += res.costUsd;
+        slowest = Math.max(slowest, res.ms ?? 0);
+      }
+    });
+    lines.push(`  · batch done in ${(slowest / 1000).toFixed(1)}s · ~${Math.ceil((prompt + completion) / 1000)}k tokens`);
+    pendingSaFoldRef.current.push({
+      batchId,
+      index: meta.startIndex,
+      content: lines.join("\n"),
+      tokens: { prompt, completion },
+      costUsd: cost,
+      mutations: saMutationsRef.current,
+    });
+    saMutationsRef.current = [];
+    maybeFoldSubagents();
+  }
+
+  /** Fold finished subagent batches into the session, but never mid-turn. */
+  function foldPendingSa(): void {
+    const pending = pendingSaFoldRef.current;
+    pendingSaFoldRef.current = [];
+    let messages = sessionRef.current.messages;
+    let usage = sessionRef.current.usage;
+    for (const entry of pending.sort((a, b) => a.index - b.index)) {
+      const block: Message = {
+        role: "assistant",
+        content: entry.content,
+        timestamp: new Date().toISOString(),
+        subagent: true,
+      };
+      const at = Math.min(entry.index, messages.length);
+      messages = [...messages.slice(0, at), block, ...messages.slice(at)];
+      usage = addUsage(usage ?? emptyUsage(), {
+        requests: 1,
+        promptTokens: entry.tokens.prompt,
+        completionTokens: entry.tokens.completion,
+        costUsd: entry.costUsd,
+      });
+      lastTurnMutationsRef.current.push(...entry.mutations);
+      setSubagents((previous) => previous.filter((batch) => batch.id !== entry.batchId));
+    }
+    const next: Session = { ...sessionRef.current, messages, updatedAt: new Date().toISOString(), usage };
+    saveSession(next);
+    setSession(next);
+    sessionRef.current = next;
+    setCompleted(messages);
+    flashNote(`✓ ${pending.length} subagent report${pending.length === 1 ? "" : "s"} folded into the chat`);
+  }
+
+  /** Fold pending reports when the main agent isn't mid-turn. */
+  function maybeFoldSubagents(): void {
+    if (mainTurnRef.current || pendingSaFoldRef.current.length === 0) return;
+    foldPendingSa();
+  }
+
+  /** A single esc cancels every running subagent. */
+  function cancelSubagents(): void {
+    subAbortRef.current?.abort();
+    if (subRunningRef.current === 0) return;
+    flashNote(`⟳ cancelling ${subRunningRef.current} subagent${subRunningRef.current === 1 ? "" : "s"}…`);
+    escArmRef.current = null;
   }
 
   function openOverlay(kind: Exclude<OverlayKind, null>): void {
@@ -1023,6 +1340,23 @@ export function App({
       case "/btw":
         void fireAside(trimmed.replace(/^\/btw\b\s*/i, ""));
         break;
+      case "/subagent": {
+        if (subRunningRef.current > 0) {
+          flashNote("⚠ subagents already running — wait or press esc");
+          break;
+        }
+        const tasks = trimmed
+          .replace(/^\/subagent\b\s*/i, "")
+          .split(/\s*[|,]\s*|\n+/)
+          .map((task) => task.trim())
+          .filter(Boolean);
+        if (tasks.length === 0) {
+          setError("Usage: /subagent <task>, <task2> — any number of tasks, separated by commas, pipes, or new lines. Each runs as its own parallel agent.");
+          break;
+        }
+        startSubagents(tasks);
+        break;
+      }
       case "/compare": {
         const question = trimmed.replace(/^\/compare\b\s*/i, "");
         if (!question) {
@@ -1162,8 +1496,35 @@ export function App({
       });
       lines.push({ key: `${base}s`, node: <Text> </Text>, text: " ", messageIndex: -1 });
     }
+    subagents.forEach((batch, batchIndex) => {
+      const base = `sa${batch.id}`;
+      const running = batch.units.some((unit) => unit.status === "running");
+      const header = `  ⟳ subagents · ${batch.units.map((unit) => unit.task).join(" | ")}${running ? " · esc cancels" : ""}`;
+      lines.push({ key: `${base}q`, node: <Text color={theme.accent}>{header}</Text>, text: header, messageIndex: -1 });
+      batch.units.forEach((unit, unitIndex) => {
+        const mark =
+          unit.status === "running"
+            ? SPINNER_FRAMES[blink % SPINNER_FRAMES.length]
+            : unit.status === "done"
+              ? "✓"
+              : unit.status === "cancelled"
+                ? "−"
+                : "✗";
+        const label =
+          unit.status === "running"
+            ? unit.live || "…"
+            : unit.status === "done"
+              ? `done · ${((unit.ms ?? 0) / 1000).toFixed(1)}s`
+              : unit.status;
+        const line = `  ${mark} [${unitIndex + 1}] ${unit.task} — ${label}`;
+        lines.push({ key: `${base}u${unitIndex}`, node: <Text dimColor>{line}</Text>, text: line, messageIndex: -1 });
+      });
+      if (batchIndex < subagents.length - 1) {
+        lines.push({ key: `${base}s`, node: <Text> </Text>, text: " ", messageIndex: -1 });
+      }
+    });
     return lines;
-  }, [completed, columns, streaming, asides, ab]);
+  }, [completed, columns, streaming, asides, ab, subagents]);
   const chatBudget = Math.max(
     rows -
       CHAT_RESERVED_ROWS -
@@ -1293,6 +1654,15 @@ export function App({
         <ModelPicker
           config={activeConfig}
           onSelect={(id) => { closeOverlay(); if (id) switchModel(id); }}
+          onToggleFavorite={(id) => {
+            const favorites = activeConfig.favoriteModels ?? [];
+            const next = favorites.some((entry) => entry.toLowerCase() === id.toLowerCase())
+              ? favorites.filter((entry) => entry.toLowerCase() !== id.toLowerCase())
+              : [...favorites, id];
+            const nextConfig = { ...activeConfig, favoriteModels: next };
+            saveConfig(nextConfig);
+            setActiveConfig(nextConfig);
+          }}
           recentModels={recentModels}
         />
       ) : null}

@@ -22,9 +22,10 @@ npx bajajbot
 - **Done notifications** — replies that take 3+ seconds ring the terminal bell and pop a desktop notification (OSC 9/777, tmux-aware), so you can switch windows while it works
 - **`/btw` side questions** — ask "btw, why?" mid-task and get an instant aside without derailing the running agent; the status bar teaches context-aware command hints as you go
 - **`/compare` A/B** — fire one question at two models, see answers side by side, press 1 or 2 to keep the winner into the chat history
+- **`/subagent` parallel research** — fan out background mini-agents (`/subagent summarize TODO.md | check node version | find bugs`) that investigate while you keep chatting; live status chips below the chat, esc cancels the batch, finished reports fold into the chat as boxed blocks
 - **File & image mentions** — type `@src/app.ts` to attach code, `@error.png` to attach images for vision models, with Tab autocomplete
 - Risky actions require explicit confirmation with a colorized diff preview; nothing runs without your approval
-- Any model, switchable mid-chat with `/model`; recently-used models shown at top of the picker; ★ pin favorites via config
+- Any model, switchable mid-chat with `/model`; recently-used models at top of picker; ctrl+f toggles ★ favorites (also settable via config)
 - Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
 - **Git checkpoints** — every reply auto-snapshots the project to a hidden ref (your branch/index/stash untouched); browse and restore with `/checkpoints`
 - **`/changes`** — every file the agent created/edited/deleted this session
@@ -127,7 +128,7 @@ bajajbot config unset temperature
 
 | Command | Argument | What it does |
 | --- | --- | --- |
-| `/model` | optional `<id>` | With an ID: switch model now. Without: open a searchable picker — type to filter, recently-used models shown at top, Enter chooses, or type any unlisted ID into the `+` row |
+| `/model` | optional `<id>` | With an ID: switch model now. Without: open a searchable picker — type to filter, recently-used models at top, ctrl+f toggles ★ favorites, Enter chooses, or type any unlisted ID into the `+` row |
 | `/skills` | — | Browse every installed skill (project + global). `↑↓` select, **Enter runs it immediately**, esc closes |
 | `/checkpoints` | — | Browse automatic git snapshots of your project. Enter arms a restore, enter again confirms |
 | `/changes` | — | List files the agent created/edited/deleted this session (A/M/D color-coded) |
@@ -135,6 +136,7 @@ bajajbot config unset temperature
 | `/usage` | — | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
 | `/btw <question>` | required | Instant side question — answered in 1–2 sentences even mid-task, never enters the chat history |
 | `/compare <question>` | required | Ask two models the same question side by side — pick the winner to keep (1 = A, 2 = B, esc = discard both) |
+| `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents — any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
 | `/copy` | — | Copy the last assistant reply to the clipboard |
 | `/retry` | — | Regenerate the last assistant reply |
 | `/undo` | — | Remove the last exchange and revert its file changes |

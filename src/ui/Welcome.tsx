@@ -9,9 +9,28 @@ import { BOT_START, LOGO_BOTTOM, LOGO_TOP } from "./logo.js";
 const FEATURES: Array<[string, string]> = [
   ["streaming", "replies appear live, rendered as markdown"],
   ["/model", "pick any model — even unlisted ones"],
+  ["/compare", "ask two models, keep the better answer"],
+  ["/btw", "instant side question, never enters the chat"],
   ["/retry · /undo", "regenerate or remove the last exchange"],
   ["/search · /export", "find old answers, save the chat"],
   ["/sessions", "resume a saved conversation"],
+];
+
+const TIPS = [
+  "Use /export to save the conversation as Markdown (or JSON)",
+  "Use @src/app.ts to attach files — the model reads them automatically",
+  "Type /btw to ask a quick side question without breaking the current task",
+  "Everything stays local in ~/.bajajbot — no data leaves your machine",
+  "Type /compare to pit two models against each other and keep the winner",
+  "Type /subagent to fan out parallel research agents while you keep chatting",
+  "The agent searches the web itself — just ask about something current",
+  "press esc twice to interrupt a running turn (accidental-safe)",
+  "Type /retry to regenerate a reply, /undo to remove the last exchange",
+  "Type /usage to see tokens and cost across all your chats",
+  "Switch looks with /theme, resume chats with /sessions",
+  "Drag over text to copy it — works over SSH too",
+  "Type /checkpoints to restore any file from a git snapshot",
+  "Type /skills to browse playbooks and run one instantly",
 ];
 
 export function Splash({
@@ -32,9 +51,14 @@ export function Splash({
   autoSelected?: number;
 }) {
   const [blink, setBlink] = useState(true);
+  const [tipIndex, setTipIndex] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setBlink((value) => !value), 500);
-    return () => clearInterval(id);
+    const tipId = setInterval(() => setTipIndex((value) => (value + 1) % TIPS.length), 5000);
+    return () => {
+      clearInterval(id);
+      clearInterval(tipId);
+    };
   }, []);
   const wide = columns >= 62;
   const boxWidth = Math.min(64, Math.max(columns - 2, 20));
@@ -94,6 +118,10 @@ export function Splash({
         </Text>
       </Box>
       <Text dimColor>{columns >= 48 ? "esc interrupt · ↑↓ history · everything stays local in ~/.bajajbot" : "esc interrupt · ↑↓ history"}</Text>
+      <Text>
+        <Text color={theme.accent}>● Tip </Text>
+        <Text dimColor>{TIPS[tipIndex]}</Text>
+      </Text>
     </Box>
   );
 }

@@ -95,6 +95,24 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
       return;
     }
 
+    if (message.subagent) {
+      const wrapped = wrapText(message.content, inner);
+      const contentWidth = Math.max(...wrapped.map((line) => line.length), 1);
+      push(<Text color={theme.accent}>{`╭${"─".repeat(contentWidth + 2)}╮`}</Text>, `╭${"─".repeat(contentWidth + 2)}╮`);
+      for (const line of wrapped) {
+        push(
+          <Text>
+            <Text color={theme.accent}>{"│ "}</Text>
+            <Text>{line.padEnd(contentWidth)}</Text>
+            <Text color={theme.accent}>{" │"}</Text>
+          </Text>,
+          `│ ${line.padEnd(contentWidth)} │`,
+        );
+      }
+      push(<Text color={theme.accent}>{`╰${"─".repeat(contentWidth + 2)}╯`}</Text>, `╰${"─".repeat(contentWidth + 2)}╯`);
+      return;
+    }
+
     if (message.role === "tool") {
       const failed =
         message.content.startsWith("Error:") || message.content === "User denied this action.";

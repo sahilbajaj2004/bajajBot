@@ -23,6 +23,8 @@ export interface Message {
   images?: string[];
   /** Populated at payload time for multimodal messages; preferred over content. */
   contentParts?: ContentPart[];
+  /** True for /subagent report blocks — rendered as a boxed summary. */
+  subagent?: boolean;
 }
 
 export interface SessionUsage {
