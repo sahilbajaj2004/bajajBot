@@ -29,9 +29,12 @@ npx bajajbot
 - Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
 - **Git checkpoints** — every reply auto-snapshots the project to a hidden ref (your branch/index/stash untouched); browse and restore with `/checkpoints`
 - **`/changes`** — every file the agent created/edited/deleted this session
+- **`/commit`** — AI writes a conventional commit message from your working-tree diff; review the suggested message and file stats, press y to commit the whole tree (n regenerates, ⌃e edits the subject, esc cancels)
 - **`/theme`** — six UI colorways (ember, ocean, matrix, rose, violet, mono), switchable live and persisted
 - **Auto-compaction** — long chats are summarized automatically instead of hitting the model's limit, with a live context meter in the status bar
 - **Rate-limit handling** — automatic retries with backoff, honors `Retry-After`, plain-English error messages
+- **Auto-failover chain** — on a rate limit, 5xx, or unreachable provider the turn automatically retries on each entry in config `fallbackModels`; manage the chain interactively with `/fallback` (picker: arrow keys + enter, type to filter, ctrl+d removes last) or set `fallbackModels` directly
+- **Smart routing** — `/route` rules pick the model per turn: write a keyword (or `/(regex)/`) that matches your message, then choose its model or a `profile:`; the first active match auto-routes that turn only
 - **Non-interactive mode** — `bajajbot -p "prompt"` with piped stdin, for scripts and CI
 - `/usage` dashboard + `spendLimitUsd` guardrail — tokens and estimated cost per session and across all chats
 - Auto-generated session titles, first-run setup wizard that verifies your endpoint/key/model live, daily update check
@@ -111,6 +114,7 @@ saving. Configuration lives at `~/.bajajbot/config.json`.
 | `contextTokens` | integer ≥ 1000 | Token budget before auto-compaction triggers (default 12000) |
 | `spendLimitUsd` | number > 0 | Warn once when a session's estimated cost crosses this line |
 | `favoriteModels` | comma-separated IDs | Models pinned ★ to the top of the `/model` picker |
+| `fallbackModels` | comma-separated `model-id` \| `profile:<name>` | Auto-failover chain for the current turn when the provider rate-limits, 5xxs, or is unreachable. A `profile:` entry switches provider/endpoint (e.g. your local Ollama). Order matters — first usable entry is tried first |
 | `checkpointLimit` | integer ≥ 2 | Max git snapshots kept per project; when full, the chain restarts and old ones are reclaimed by git GC (default 300) |
 | `theme` | theme name | UI colorway — one of `ember` (default), `ocean`, `matrix`, `rose`, `violet`, `mono`. Also switchable live with `/theme` |
 | `webSearch` | object | Backend for the agent's `web_search` tool: `{ "provider": "duckduckgo" \| "brave" \| "tavily" \| "searxng", "apiKey": "...", "searxUrl": "..." }` — default is keyless DuckDuckGo; Brave/Tavily need a free API key, SearXNG your instance URL |
@@ -132,11 +136,14 @@ bajajbot config unset temperature
 | `/skills` | — | Browse every installed skill (project + global). `↑↓` select, **Enter runs it immediately**, esc closes |
 | `/checkpoints` | — | Browse automatic git snapshots of your project. Enter arms a restore, enter again confirms |
 | `/changes` | — | List files the agent created/edited/deleted this session (A/M/D color-coded) |
+| `/commit` | — | Round up the whole working tree (`git add -A`), model writes a conventional message, press y to commit (n regenerates, ⌃e edits the subject, esc cancels). Requires `git user.name`/`user.email` |
 | `/theme` | — | Pick a UI colorway (arrow keys, live preview swatches); saved to your config |
 | `/usage` | — | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
 | `/btw <question>` | required | Instant side question — answered in 1–2 sentences even mid-task, never enters the chat history |
 | `/compare <question>` | required | Ask two models the same question side by side — pick the winner to keep (1 = A, 2 = B, esc = discard both) |
 | `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents — any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
+| `/fallback` \| `/fallback <id>` \| `/fallback clear` | optional | Interactive picker for the auto-failover chain (models + saved profiles; enter adds, ctrl+d removes last, esc done), or add a single model ID directly, or clear the chain |
+| `/route` \| `/route add "pat" <model>` \| `/route clear` | optional | Smart routing picker: toggle rules on/off, ⌃d deletes, a adds (pat = keyword or `/regex/`, then pick the model/profile). First match routes that turn; `add`/`clear` work without the picker |
 | `/copy` | — | Copy the last assistant reply to the clipboard |
 | `/retry` | — | Regenerate the last assistant reply |
 | `/undo` | — | Remove the last exchange and revert its file changes |

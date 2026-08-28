@@ -102,10 +102,15 @@ async function requestChatCompletions(
       } as RequestInit);
     } catch (cause) {
       if (isAbortError(cause)) throw cause;
-      throw new Error(`Could not reach ${normalizeBaseUrl(config.baseUrl)} — check your connection. (${cause instanceof Error ? cause.message : String(cause)})`);
+      throw fail(
+        `Could not reach ${normalizeBaseUrl(config.baseUrl)} — check your connection. (${cause instanceof Error ? cause.message : String(cause)})`,
+        true,
+      );
     }
     if (response.ok || !RETRYABLE_STATUSES.has(response.status) || attempt >= delays.length) {
-      if (!response.ok) throw new Error(friendlyApiError(response.status, await response.text()));
+      if (!response.ok) {
+        throw fail(friendlyApiError(response.status, await response.text()), RETRYABLE_STATUSES.has(response.status));
+      }
       return response;
     }
     const retryAfterSeconds = Number(response.headers.get("retry-after"));
@@ -153,6 +158,19 @@ function toApiMessage(message: Message): Record<string, unknown> {
 
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
+}
+
+/** True for errors worth failing over to a fallback model: retryable HTTP
+ *  statuses (429/5xx) that exhausted their backoff, or the provider being
+ *  unreachable. False for bad keys, unknown models, and other 4xx errors. */
+export function isRetryableError(error: unknown): boolean {
+  return error instanceof Error && (error as { retryable?: boolean }).retryable === true;
+}
+
+function fail(message: string, retryable: boolean): Error {
+  const error = new Error(message) as Error & { retryable?: boolean };
+  if (retryable) error.retryable = true;
+  return error;
 }
 
 export async function* streamChat(config: Config, messages: Message[], options: StreamOptions = {}): AsyncGenerator<string> {

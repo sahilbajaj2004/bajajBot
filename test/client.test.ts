@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { isAbortError, streamChat, type Usage } from "../src/provider/client.js";
+import { isAbortError, isRetryableError, streamChat, type Usage } from "../src/provider/client.js";
 import type { Config } from "../src/config/types.js";
 
 const config: Config = { provider: "openrouter", apiKey: "key", baseUrl: "https://x.test/v1", defaultModel: "m" };
@@ -72,6 +72,27 @@ test("streamChat gives up after exhausting retries with a friendly message", asy
     /Rate limited by the provider \(429\).*Too many requests/s,
   );
   assert.equal(calls, 2);
+});
+
+test("retryable errors are flagged so the turn can fail over", async () => {
+  let mode: "429" | "500" | "down" | "401" = "429";
+  globalThis.fetch = (async () => {
+    if (mode === "down") throw new TypeError("fetch failed: connection refused");
+    return new Response("nope", { status: mode === "401" ? 401 : mode === "500" ? 500 : 429 });
+  }) as typeof fetch;
+  for (const variant of ["429", "500", "down", "401"] as const) {
+    mode = variant;
+    try {
+      await streamChat(config, [], { retryDelays: [1] }).next();
+      assert.fail("expected streamChat to throw");
+    } catch (cause) {
+      if (variant === "401") {
+        assert.equal(isRetryableError(cause), false);
+      } else {
+        assert.equal(isRetryableError(cause), true);
+      }
+    }
+  }
 });
 
 test("streamChat honors Retry-After seconds over the default backoff", async () => {

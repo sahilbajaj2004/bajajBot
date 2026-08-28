@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Config } from "../config/types.js";
 import { removeConfig, saveConfig } from "../config/store.js";
-import { completeChat, isAbortError, streamChat, type Usage } from "../provider/client.js";
+import { completeChat, isAbortError, isRetryableError, streamChat, type Usage } from "../provider/client.js";
 import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
 import { toMarkdown } from "../session/export.js";
 import { compactMessages, estimateTokens, tokenLimit } from "../session/compact.js";
@@ -18,6 +18,7 @@ import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
 import { listSkills, readSkillFile } from "../tools/skills.js";
 import { restoreMutations } from "../tools/undo.js";
 import { createSnapshot, listSnapshots, restoreSnapshot, sessionChangedFiles } from "../tools/gitCheckpoints.js";
+import { commitTree, diffForContext, filesSummary, gitUserConfigured, parseCommitMessage, worktreeChanges, type CommitMessage, type CommitStat } from "../tools/gitCommit.js";
 import { loadInstructions } from "../tools/instructions.js";
 import { readMemory } from "../tools/memory.js";
 import type { FileMutation, ToolContext } from "../tools/types.js";
@@ -30,6 +31,10 @@ import { InputBox } from "./InputBox.js";
 import { ChatViewport, buildChatLines, wrapText, type ChatLine, type Highlight } from "./MessageList.js";
 import type { MouseStdin } from "./mouse.js";
 import { ModelPicker } from "./ModelPicker.js";
+import { FallbackPicker } from "./FallbackPicker.js";
+import { CommitDialog } from "./CommitDialog.js";
+import { RoutePicker } from "./RoutePicker.js";
+import { matchRoutes } from "../session/routing.js";
 import { Overlay } from "./Overlay.js";
 import { ProfilePicker } from "./ProfilePicker.js";
 import { SearchDialog, type SearchMatch } from "./SearchDialog.js";
@@ -51,7 +56,7 @@ import { busyStatus } from "../util/busyStatus.js";
 import { contextualTip, rotatingTip } from "../util/tips.js";
 import { DOUBLE_ESC_MS, escAction } from "../util/esc.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | "compareModel" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | "compareModel" | "fallback" | "commit" | "route" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -206,6 +211,11 @@ export function App({
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const [autoSelected, setAutoSelected] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [commitDialog, setCommitDialog] = useState<{
+    files: CommitStat[];
+    message: CommitMessage;
+    busy: boolean;
+  } | null>(null);
   const [search, setSearch] = useState<{ query: string; matches: SearchMatch[] } | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [blink, setBlink] = useState(0);
@@ -232,6 +242,10 @@ export function App({
   const mainTurnRef = useRef(false);
   const confirmQueueRef = useRef<ConfirmRequest[]>([]);
   const currentConfirmRef = useRef<ConfirmRequest | null>(null);
+  /** Active auto-fallback target for the current turn (this turn only). */
+  const fallbackRef = useRef<{ config: Config; label: string; index: number } | null>(null);
+  /** Per-turn smart-routing override (see /route); cleared when the turn ends. */
+  const routeRef = useRef<{ config: Config; model: string; label: string } | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const bufferRef = useRef("");
@@ -597,6 +611,57 @@ export function App({
     setHistoryIndex(null);
   }
 
+  /** Effective config for a streamed round — applies the per-turn fallback or route override if one is active. */
+  function modelConfig(model: string): Config {
+    const fb = fallbackRef.current;
+    if (fb) return { ...activeConfig, ...fb.config, defaultModel: model };
+    const route = routeRef.current;
+    if (route) return { ...activeConfig, ...route.config, defaultModel: model };
+    return { ...activeConfig, defaultModel: model };
+  }
+
+  /** Resolve a route's `model` (ID or `profile:<name>`) to a usable config + label. */
+  function resolveRoute(model: string): { config: Config; model: string; label: string } | null {
+    const trimmed = model.trim();
+    if (trimmed.startsWith("profile:")) {
+      const profile = activeConfig.profiles?.[trimmed.slice("profile:".length)];
+      if (!profile) return null;
+      return { config: { ...profile }, model: profile.defaultModel, label: `${profile.defaultModel} (profile:${trimmed.slice("profile:".length)})` };
+    }
+    return {
+      config: { provider: activeConfig.provider, apiKey: activeConfig.apiKey, baseUrl: activeConfig.baseUrl, defaultModel: trimmed },
+      model: trimmed,
+      label: trimmed,
+    };
+  }
+
+  /** Next usable fallback entry from config.fallbackModels, starting at fromIndex. */
+  function nextFallback(fromIndex: number, baseModel: string): { config: Config; label: string; index: number } | null {
+    const entries = activeConfig.fallbackModels ?? [];
+    const skip = fallbackRef.current?.config.defaultModel ?? baseModel;
+    for (let index = fromIndex; index < entries.length; index++) {
+      const entry = entries[index].trim();
+      if (!entry || entry === skip) continue;
+      if (entry.toLowerCase().startsWith("profile:")) {
+        const name = entry.slice("profile:".length);
+        const profile = activeConfig.profiles?.[name];
+        if (!profile) continue;
+        return { config: { ...profile }, label: `${profile.defaultModel} (profile:${name})`, index };
+      }
+      return {
+        config: {
+          provider: activeConfig.provider,
+          apiKey: activeConfig.apiKey,
+          baseUrl: activeConfig.baseUrl,
+          defaultModel: entry,
+        },
+        label: entry,
+        index,
+      };
+    }
+    return null;
+  }
+
   async function submit(explicit?: string, forceAttachments?: string[]): Promise<void> {
     const content = (explicit ?? input).trim();
     if (!content) return;
@@ -737,6 +802,16 @@ export function App({
     const startedAt = Date.now();
     mainTurnRef.current = true;
     turnStartRef.current = startedAt;
+    routeRef.current = null;
+    const lastUser = [...input].reverse().find((message) => message.role === "user");
+    const routed = matchRoutes(lastUser?.content ?? "", activeConfig.routes);
+    if (routed) {
+      const resolved = resolveRoute(routed.rule.model);
+      if (resolved) {
+        routeRef.current = resolved;
+        flashNote(`⤳ routed → ${resolved.label}`);
+      }
+    }
     let messages = input;
     if (estimateTokens(messages) > tokenLimit(activeConfig)) {
       setStreaming("");
@@ -778,12 +853,33 @@ export function App({
     let settled = false;
 
     try {
-      for (let round = 0; round < MAX_ROUNDS && !controller.signal.aborted; round++) {
-        const calls = await streamRound(base.model, convo, controller, (value) => {
-          usage = value;
-          roundTokens.prompt += value.prompt_tokens ?? 0;
-          roundTokens.completion += value.completion_tokens ?? 0;
-        });
+      let round = 0;
+      while (round < MAX_ROUNDS && !controller.signal.aborted) {
+        let calls: ToolCall[] | undefined;
+        try {
+          calls = await streamRound(fallbackRef.current?.config.defaultModel ?? routeRef.current?.model ?? base.model, convo, controller, (value) => {
+            usage = value;
+            roundTokens.prompt += value.prompt_tokens ?? 0;
+            roundTokens.completion += value.completion_tokens ?? 0;
+          });
+        } catch (cause) {
+          if (
+            !controller.signal.aborted &&
+            isRetryableError(cause) &&
+            (fallbackRef.current !== null || (activeConfig.fallbackModels?.length ?? 0) > 0)
+          ) {
+            const next = fallbackRef.current
+              ? nextFallback(fallbackRef.current.index + 1, base.model)
+              : nextFallback(0, base.model);
+            if (next) {
+              fallbackRef.current = next;
+              flashNote(`⇶ falling back to ${next.label}`);
+              continue;
+            }
+          }
+          throw cause;
+        }
+        round += 1;
         if (!bufferRef.current && !calls?.length && !controller.signal.aborted) {
           settled = true;
           break;
@@ -826,6 +922,8 @@ export function App({
     } finally {
       abortRef.current = null;
     }
+    fallbackRef.current = null;
+    routeRef.current = null;
 
     const hadTokens = roundTokens.prompt > 0 || roundTokens.completion > 0;
     const replyCost = hadTokens ? await costFor(base.model, roundTokens) : null;
@@ -906,7 +1004,7 @@ export function App({
           };
         }),
       ];
-      for await (const token of streamChat({ ...activeConfig, defaultModel: model }, payload, {
+      for await (const token of streamChat(modelConfig(model), payload, {
         signal: controller.signal,
         tools: toolSchemas(),
         onUsage,
@@ -1211,6 +1309,70 @@ export function App({
     exit(removed ? "All BajajBot data removed. Run `bajajbot` to set up again." : "Nothing to remove.");
   }
 
+  async function generateCommitMessage(previous?: CommitMessage): Promise<void> {
+    const cwd = process.cwd();
+    const diff = diffForContext(cwd);
+    const summary = filesSummary(cwd);
+    const hint = previous ? `The user rejected the previous suggestion "${previous.subject}" — write a fresh one that does not repeat its phrasing.` : "";
+    const messages: Message[] = [
+      {
+        role: "system",
+        content:
+          "You write short conventional git commit messages (feat/fix/docs/refactor/chore/style/perf/test/build/ci/revert). " +
+          "Reply with ONLY the commit message: one subject line at most 72 chars (imperative mood, no trailing period), then a blank line, then up to 5 bullet points starting with a dash that summarise the concrete changes. No preamble, no markdown fences, no line-wrapping.",
+        timestamp: new Date().toISOString(),
+      },
+      {
+        role: "user",
+        content: `${hint}\n\nChanges to commit (${summary}):\n\n${diff || "(no readable diff)\nList the files below:\n" + (worktreeChanges(cwd) ?? []).map((entry) => `${entry.status} ${entry.path}`).join("\n")}`,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    const reply = await completeChat(modelConfig(session.model), messages);
+    setCommitDialog((prev) =>
+      prev ? { ...prev, message: parseCommitMessage(reply), busy: false } : prev,
+    );
+  }
+
+  function runCommit(): void {
+    const cwd = process.cwd();
+    const files = worktreeChanges(cwd);
+    if (files === null) {
+      flashNote("commit aborted — not a git repository");
+      return;
+    }
+    if (files.length === 0) {
+      flashNote("nothing to commit — working tree is clean");
+      return;
+    }
+    if (!gitUserConfigured(cwd)) {
+      flashNote('git user.name / user.email unset — run: git config user.name "You" && git config user.email you@example.com');
+      return;
+    }
+    setOverlay("commit");
+    setCommitDialog({ files, busy: true, message: { subject: "…", body: [] } });
+    void generateCommitMessage().catch((cause: unknown) => {
+      setCommitDialog(null);
+      setOverlay(null);
+      flashNote(`could not write a commit message: ${cause instanceof Error ? cause.message : String(cause)}`);
+    });
+  }
+
+  function doCommit(message: CommitMessage): void {
+    try {
+      const sha = commitTree(process.cwd(), message);
+      setCommitDialog(null);
+      setOverlay(null);
+      flashNote(`✓ committed — ${sha} ${message.subject}`);
+    } catch (cause) {
+      flashNote(`commit failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  }
+
+  function applyCommitSubject(subject: string): void {
+    setCommitDialog((prev) => (prev ? { ...prev, message: { ...prev.message, subject } } : prev));
+  }
+
   function run(raw: string): void {
     const trimmed = raw.trim();
     const matched = matchCommand(trimmed);
@@ -1234,6 +1396,9 @@ export function App({
         break;
       case "/changes":
         openOverlay("changes");
+        break;
+      case "/commit":
+        runCommit();
         break;
       case "/theme":
         openOverlay("theme");
@@ -1340,6 +1505,47 @@ export function App({
       case "/btw":
         void fireAside(trimmed.replace(/^\/btw\b\s*/i, ""));
         break;
+      case "/fallback": {
+        const rest = trimmed.replace(/^\/fallback\b\s*/i, "").trim();
+        if (/^clear$/i.test(rest)) {
+          const cleared = { ...activeConfig, fallbackModels: [] };
+          saveConfig(cleared);
+          setActiveConfig(cleared);
+          flashNote("⇶ fallback chain cleared");
+          break;
+        }
+        if (rest) {
+          const added = { ...activeConfig, fallbackModels: [...(activeConfig.fallbackModels ?? []), rest] };
+          saveConfig(added);
+          setActiveConfig(added);
+          flashNote(`⇶ fallback added: ${rest}`);
+          break;
+        }
+        openOverlay("fallback");
+        break;
+      }
+      case "/route": {
+        const rest = trimmed.replace(/^\/route\b\s*/i, "").trim();
+        if (/^clear$/i.test(rest)) {
+          const cleared = { ...activeConfig, routes: [] };
+          saveConfig(cleared);
+          setActiveConfig(cleared);
+          flashNote("⤳ routes cleared");
+          break;
+        }
+        const add = rest.match(/^add\s+(?:"([^"]+)"|(\S+))\s+(\S+)$/);
+        if (add) {
+          const pattern = add[1] ?? add[2] ?? "";
+          const model = add[3] ?? "";
+          const next = { ...activeConfig, routes: [...(activeConfig.routes ?? []), { pattern, model, active: true }] };
+          saveConfig(next);
+          setActiveConfig(next);
+          flashNote(`⤳ route added: ${pattern} → ${model}`);
+          break;
+        }
+        openOverlay("route");
+        break;
+      }
       case "/subagent": {
         if (subRunningRef.current > 0) {
           flashNote("⚠ subagents already running — wait or press esc");
@@ -1635,6 +1841,29 @@ export function App({
         />
       ) : null}
       {overlay === "changes" ? <ChangesOverlay files={changedFiles} onClose={closeOverlay} /> : null}
+      {overlay === "commit" && commitDialog ? (
+        <CommitDialog
+          files={commitDialog.files}
+          message={commitDialog.message}
+          busy={commitDialog.busy}
+          onCommit={() => doCommit(commitDialog.message)}
+          onRegenerate={() => {
+            if (commitDialog.busy) return;
+            setCommitDialog({ ...commitDialog, busy: true });
+            void generateCommitMessage(commitDialog.message).catch((cause: unknown) => {
+              setCommitDialog(null);
+              setOverlay(null);
+              flashNote(`could not write a commit message: ${cause instanceof Error ? cause.message : String(cause)}`);
+            });
+          }}
+          onApplySubject={applyCommitSubject}
+          onClose={() => {
+            setCommitDialog(null);
+            closeOverlay();
+            flashNote("commit cancelled");
+          }}
+        />
+      ) : null}
       {overlay === "memory" ? <MemoryOverlay facts={memoryFacts} onClose={closeOverlay} /> : null}
       {overlay === "theme" ? (
         <ThemePicker
@@ -1675,6 +1904,29 @@ export function App({
       ) : null}
       {overlay === "profile" ? (
         <ProfilePicker profiles={activeConfig.profiles ?? {}} active={profileName} onSelect={applyProfile} />
+      ) : null}
+      {overlay === "fallback" ? (
+        <FallbackPicker
+          config={activeConfig}
+          onUpsert={(next) => {
+            const nextConfig = { ...activeConfig, fallbackModels: next };
+            saveConfig(nextConfig);
+            setActiveConfig(nextConfig);
+            flashNote(`⇶ fallback chain (${next.length}): ${next.join(", ")}`);
+          }}
+          onClose={closeOverlay}
+        />
+      ) : null}
+      {overlay === "route" ? (
+        <RoutePicker
+          config={activeConfig}
+          onUpsert={(next) => {
+            const nextConfig = { ...activeConfig, routes: next };
+            saveConfig(nextConfig);
+            setActiveConfig(nextConfig);
+          }}
+          onClose={closeOverlay}
+        />
       ) : null}
       {overlay === "sessions" ? (
         <SessionPicker

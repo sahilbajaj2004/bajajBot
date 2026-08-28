@@ -5,6 +5,17 @@ export interface Profile {
   defaultModel: string;
 }
 
+export interface RouteRule {
+  /** Case-insensitive substring, or `/.../ `-wrapped regex matched against the user message. */
+  pattern: string;
+  /** Model ID or `profile:<name>`. */
+  model: string;
+  /** Disabled rules are skipped when matching. Default true. */
+  active?: boolean;
+  /** Short label for the status hint; defaults to the matched model. */
+  label?: string;
+}
+
 export interface Config {
   provider: "openrouter" | "custom";
   apiKey: string;
@@ -27,6 +38,20 @@ export interface Config {
   theme?: string;
   /** Saved provider profiles, switchable with /profile or `bajajbot profile use`. */
   profiles?: Record<string, Profile>;
+  /**
+   * Ordered auto-failover chain: on a rate limit (429), server error (5xx) or
+   * unreachable provider, the turn retries on each entry in turn. Entries are
+   * model IDs (same provider) or `profile:<name>` to use a saved profile
+   * (e.g. a local Ollama). Empty/unset disables failover.
+   */
+  fallbackModels?: string[];
+  /**
+   * Smart-routing rules: the first active rule whose pattern matches the
+   * user's message picks the model for that turn (only). `pattern` is a
+   * case-insensitive substring, or a `/.../ `-wrapped regex. `model` is a
+   * model ID or `profile:<name>`. Maintained with `/route`.
+   */
+  routes?: RouteRule[];
   /** Web search backend for the agent's web_search tool. Default: duckduckgo (no key). */
   webSearch?: {
     provider: "duckduckgo" | "brave" | "tavily" | "searxng";
