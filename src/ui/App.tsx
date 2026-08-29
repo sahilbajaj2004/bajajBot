@@ -1344,7 +1344,7 @@ export function App({
     const cwd = process.cwd();
     const files = worktreeChanges(cwd);
     if (files === null) {
-      flashNote("commit aborted — not a git repository");
+      flashNote("commit aborted — not a git repository — run: git init");
       return;
     }
     if (files.length === 0) {
@@ -1714,7 +1714,9 @@ export function App({
           `✓ Ollama: ${found.models.join(", ")} — ${merged.created ? "profile created" : "using profile"}, model ${merged.model}`,
         );
       })
-      .catch((cause: unknown) => flashNote(`ollama setup failed: ${cause instanceof Error ? cause.message : String(cause)}`));
+      .catch((cause: unknown) =>
+        flashNote(`ollama setup failed: ${cause instanceof Error ? cause.message : String(cause)} — is \`ollama serve\` running?`),
+      )
   }
 
   const chat = useMemo(() => {

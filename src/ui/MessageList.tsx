@@ -61,6 +61,24 @@ function argPreview(call: NonNullable<Message["toolCalls"]>[number]): string {
   }
 }
 
+/**
+ * Top/bottom border strings for a chat bubble that exactly fit the content
+ * width. Labels (e.g. "you") ride the top border when they fit; otherwise the
+ * classic plain border is used so the two lines always align.
+ */
+function bubbleBox(contentWidth: number, label: string): { top: string; bottom: string } {
+  if (label.length > 0 && contentWidth >= label.length + 2) {
+    return {
+      top: `╭─ ${label} ${"─".repeat(contentWidth - label.length - 1)}╮`,
+      bottom: `╰${"─".repeat(contentWidth + 2)}╮`,
+    };
+  }
+  return {
+    top: `╭${"─".repeat(contentWidth + 2)}╮`,
+    bottom: `╰${"─".repeat(contentWidth + 2)}╮`,
+  };
+}
+
 /** Build the flat scrollback of single-line blocks the chat viewport renders from. */
 export function buildChatLines(messages: Message[], columns: number): ChatLine[] {
   const inner = Math.max(columns - 6, 16);
@@ -80,36 +98,38 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
     if (message.role === "user") {
       const wrapped = wrapText(message.content, inner);
       const contentWidth = Math.max(...wrapped.map((line) => line.length), 1);
-      push(<Text color="gray">{`╭${"─".repeat(contentWidth + 2)}╮`}</Text>, `╭${"─".repeat(contentWidth + 2)}╮`);
+      const { top, bottom } = bubbleBox(contentWidth, "you");
+      push(<Text color="gray">{top}</Text>, top);
       for (const line of wrapped) {
         push(
           <Text>
             <Text color="gray">{"│ "}</Text>
-            <Text>{line.padEnd(contentWidth)}</Text>
+            <Text bold>{line.padEnd(contentWidth)}</Text>
             <Text color="gray">{" │"}</Text>
           </Text>,
           `│ ${line.padEnd(contentWidth)} │`,
         );
       }
-      push(<Text color="gray">{`╰${"─".repeat(contentWidth + 2)}╯`}</Text>, `╰${"─".repeat(contentWidth + 2)}╯`);
+      push(<Text color="gray">{bottom}</Text>, bottom);
       return;
     }
 
     if (message.subagent) {
       const wrapped = wrapText(message.content, inner);
       const contentWidth = Math.max(...wrapped.map((line) => line.length), 1);
-      push(<Text color={theme.accent}>{`╭${"─".repeat(contentWidth + 2)}╮`}</Text>, `╭${"─".repeat(contentWidth + 2)}╮`);
+      const { top, bottom } = bubbleBox(contentWidth, "subagent");
+      push(<Text color={theme.accent}>{top}</Text>, top);
       for (const line of wrapped) {
         push(
           <Text>
             <Text color={theme.accent}>{"│ "}</Text>
-            <Text>{line.padEnd(contentWidth)}</Text>
+            <Text italic>{line.padEnd(contentWidth)}</Text>
             <Text color={theme.accent}>{" │"}</Text>
           </Text>,
           `│ ${line.padEnd(contentWidth)} │`,
         );
       }
-      push(<Text color={theme.accent}>{`╰${"─".repeat(contentWidth + 2)}╯`}</Text>, `╰${"─".repeat(contentWidth + 2)}╯`);
+      push(<Text color={theme.accent}>{bottom}</Text>, bottom);
       return;
     }
 

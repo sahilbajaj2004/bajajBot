@@ -6,6 +6,7 @@ export function Overlay({ title, children }: { title: string; children: ReactNod
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
       <Text bold color={theme.accent}>{title}</Text>
+      <Text> </Text>
       {children}
     </Box>
   );

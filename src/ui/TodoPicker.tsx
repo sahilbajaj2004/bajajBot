@@ -106,7 +106,6 @@ export function TodoPicker({
         )
       ) : (
         <>
-          <Text> </Text>
           <Text bold color={theme.accent}>{`  › ${text}${text ? "" : "█"}`}</Text>
           <Text dimColor>  Type a task — ↵ adds it · esc back.</Text>
         </>

@@ -2,6 +2,28 @@ import { Box, Text, useStdout } from "ink";
 import { DEFAULT_COLUMNS, theme } from "./theme.js";
 import { shortSessionId } from "./title.js";
 
+export function noteKind(text: string): "success" | "warn" | "error" | "info" {
+  if (text.startsWith("✓")) return "success";
+  if (text.startsWith("⚠")) return "warn";
+  if (/\b(failed|aborted?|denied|could not|cannot|nothing to (save|commit)|no (ollama|matches|snippet))\b/i.test(text)) {
+    return "error";
+  }
+  return "info";
+}
+
+export function noteColor(text: string): string {
+  switch (noteKind(text)) {
+    case "success":
+      return theme.success;
+    case "warn":
+      return "yellow";
+    case "error":
+      return theme.danger;
+    case "info":
+      return theme.accent;
+  }
+}
+
 export function StatusBar({
   model,
   tokens,
@@ -32,6 +54,8 @@ export function StatusBar({
   const extraWide = (stdout.columns ?? DEFAULT_COLUMNS) >= 104;
   const money =
     cost == null || cost <= 0 ? "" : `$${cost >= 0.01 ? cost.toFixed(2) : cost.toFixed(4)} · `;
+  const ctxPct = Math.round(contextPercent ?? 0);
+  const filled = Math.min(10, Math.max(0, Math.round(ctxPct / 10)));
   const gauge =
     contextPercent == null ? null : (
       <Text
@@ -39,7 +63,9 @@ export function StatusBar({
         color={contextPercent >= 90 ? theme.danger : contextPercent >= 70 ? "yellow" : undefined}
         dimColor={contextPercent < 70}
       >
-        {` · ctx ${Math.round(contextPercent)}%`}
+        {wide
+          ? ` · ctx ${"█".repeat(filled)}${"░".repeat(10 - filled)} ${ctxPct}%`
+          : ` · ctx ${ctxPct}%`}
       </Text>
     );
   return (
@@ -61,7 +87,7 @@ export function StatusBar({
           {gauge}
         </Text>
         {note ? (
-          <Text bold color="green">{note}</Text>
+          <Text bold color={noteColor(note)}>{note}</Text>
         ) : (
           <Text dimColor>
             {streaming ? (

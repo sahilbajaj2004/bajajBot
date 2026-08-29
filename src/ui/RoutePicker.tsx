@@ -159,16 +159,13 @@ export function RoutePicker({
       ) : null}
       {mode === "pattern" ? (
         <>
-          <Text> </Text>
           <Text bold color={theme.accent}>{`  › ${pattern}${pattern ? "" : "█"}`}</Text>
           <Text dimColor>  Pattern matches your message — a word is a keyword, /.../ is a regex.</Text>
         </>
       ) : null}
       {mode === "model" ? (
         <>
-          <Text> </Text>
           <Text dimColor>{`  " ${pattern} " → pick a model:`}</Text>
-          <Text> </Text>
           {models === null ? (
             <Text dimColor>Loading models…</Text>
           ) : rows.length === 0 ? (

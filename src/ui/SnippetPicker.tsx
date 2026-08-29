@@ -134,14 +134,12 @@ export function SnippetPicker({
       ) : null}
       {mode === "name" ? (
         <>
-          <Text> </Text>
           <Text bold color={theme.accent}>{`  › ${name}${name ? "" : "█"}`}</Text>
           <Text dimColor>  Name for the snippet — ↵ to type the text.</Text>
         </>
       ) : null}
       {mode === "text" ? (
         <>
-          <Text> </Text>
           <Text dimColor>{`  ${name}:`}</Text>
           <Text bold color={theme.accent}>{`  › ${text}${text ? "" : "█"}`}</Text>
           <Text dimColor>  Type the template (\n = newline) — ↵ saves it.</Text>
