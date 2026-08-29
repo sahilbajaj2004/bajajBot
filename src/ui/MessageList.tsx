@@ -70,12 +70,12 @@ function bubbleBox(contentWidth: number, label: string): { top: string; bottom: 
   if (label.length > 0 && contentWidth >= label.length + 2) {
     return {
       top: `╭─ ${label} ${"─".repeat(contentWidth - label.length - 1)}╮`,
-      bottom: `╰${"─".repeat(contentWidth + 2)}╮`,
+      bottom: `╰${"─".repeat(contentWidth + 2)}╯`,
     };
   }
   return {
     top: `╭${"─".repeat(contentWidth + 2)}╮`,
-    bottom: `╰${"─".repeat(contentWidth + 2)}╮`,
+    bottom: `╰${"─".repeat(contentWidth + 2)}╯`,
   };
 }
 
