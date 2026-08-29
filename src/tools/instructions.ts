@@ -37,7 +37,7 @@ function readIfPresent(path: string, budget: number): { content: string; truncat
 export function loadInstructions(cwd: string, options: { home?: string } = {}): LoadedInstructions {
   const home = options.home ?? homedir();
   const projectPath =
-    [join(cwd, INSTRUCTIONS_FILE), join(cwd, `.${APP_DIR_NAME}`, INSTRUCTIONS_FILE)].find((path) => existsSync(path)) ??
+    [join(cwd, INSTRUCTIONS_FILE), join(cwd, APP_DIR_NAME, INSTRUCTIONS_FILE)].find((path) => existsSync(path)) ??
     undefined;
   const globalPath = join(home, APP_DIR_NAME, INSTRUCTIONS_FILE);
 

@@ -7,6 +7,7 @@ import { listSkills, listSkillsTool, loadSkillTool } from "./skills.js";
 import { setPlanTool } from "./plan.js";
 import { instructionsBlock } from "./instructions.js";
 import { memoryPromptBlock, memoryTool } from "./memory.js";
+import { todosBlock, updateTodosTool } from "./todos.js";
 
 export const TOOLS: ToolDef[] = [
   readFile,
@@ -22,6 +23,7 @@ export const TOOLS: ToolDef[] = [
   loadSkillTool,
   setPlanTool,
   memoryTool,
+  updateTodosTool,
 ];
 
 export function toolSchemas(): ToolSchema[] {
@@ -50,7 +52,7 @@ export function systemPrompt(cwd: string): string {
       `Skill playbooks are available: ${skills.map((skill) => `${skill.name} (${skill.description})`).join("; ")}. When the user's request matches a skill, call load_skill with its name first and follow its instructions.`,
     );
   }
-  return lines.join("\n") + instructionsBlock(cwd);
+  return lines.join("\n") + instructionsBlock(cwd) + todosBlock(cwd);
 }
 
 export function parseToolArgs(raw: string): ToolArgs {

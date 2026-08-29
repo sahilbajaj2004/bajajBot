@@ -35,6 +35,9 @@ npx bajajbot
 - **Rate-limit handling** — automatic retries with backoff, honors `Retry-After`, plain-English error messages
 - **Auto-failover chain** — on a rate limit, 5xx, or unreachable provider the turn automatically retries on each entry in config `fallbackModels`; manage the chain interactively with `/fallback` (picker: arrow keys + enter, type to filter, ctrl+d removes last) or set `fallbackModels` directly
 - **Smart routing** — `/route` rules pick the model per turn: write a keyword (or `/(regex)/`) that matches your message, then choose its model or a `profile:`; the first active match auto-routes that turn only
+- **Prompt snippets** — `/sn` stores named templates in your config: send a great prompt then `/sn save deploy` to reuse it, or browse/insert with the `/sn` picker
+- **Persistent todos** — `/todo` keeps a per-project task list in `.bajajbot/todos.json`; the agent reads it and can add/tick items itself via the `update_todos` tool while working
+- **Ollama auto-setup** — `/ollama` finds your local Ollama server (`http://localhost:11434/v1`), creates a ready-to-use profile listing the installed models, and switches you to it in one shot
 - **Non-interactive mode** — `bajajbot -p "prompt"` with piped stdin, for scripts and CI
 - `/usage` dashboard + `spendLimitUsd` guardrail — tokens and estimated cost per session and across all chats
 - Auto-generated session titles, first-run setup wizard that verifies your endpoint/key/model live, daily update check
@@ -144,6 +147,9 @@ bajajbot config unset temperature
 | `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents — any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
 | `/fallback` \| `/fallback <id>` \| `/fallback clear` | optional | Interactive picker for the auto-failover chain (models + saved profiles; enter adds, ctrl+d removes last, esc done), or add a single model ID directly, or clear the chain |
 | `/route` \| `/route add "pat" <model>` \| `/route clear` | optional | Smart routing picker: toggle rules on/off, ⌃d deletes, a adds (pat = keyword or `/regex/`, then pick the model/profile). First match routes that turn; `add`/`clear` work without the picker |
+| `/sn` \| `/sn <name>` \| `/sn save <name>` \| `/sn add <name> <text>` \| `/sn rm <name>` | optional | Prompt snippets: picker inserts into your input (type filters, ⌃d deletes, a adds), `<name>` inserts, `save` stores your last sent prompt, `add` stores inline text (`\n` = newline), `rm` removes one |
+| `/todo` \| `/todo add <text>` \| `/todo clear` | optional | Persistent per-project todos: picker toggles (↵/space), deletes (⌃d), clears done (c) and adds (a); the agent updates the same list via the `update_todos` tool |
+| `/ollama` | optional | Detect a running local Ollama, create the `ollama` profile (`http://localhost:11434/v1`), list installed models, and switch to the first one |
 | `/copy` | — | Copy the last assistant reply to the clipboard |
 | `/retry` | — | Regenerate the last assistant reply |
 | `/undo` | — | Remove the last exchange and revert its file changes |

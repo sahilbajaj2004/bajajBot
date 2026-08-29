@@ -28,6 +28,7 @@ test("tool schemas expose every tool with a function signature", () => {
     "load_skill",
     "set_plan",
     "memory",
+    "update_todos",
   ]);
 });
 

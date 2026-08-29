@@ -2,7 +2,7 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { Config } from "../config/types.js";
+import type { Config, Snippet } from "../config/types.js";
 import { removeConfig, saveConfig } from "../config/store.js";
 import { completeChat, isAbortError, isRetryableError, streamChat, type Usage } from "../provider/client.js";
 import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
@@ -34,7 +34,12 @@ import { ModelPicker } from "./ModelPicker.js";
 import { FallbackPicker } from "./FallbackPicker.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { RoutePicker } from "./RoutePicker.js";
+import { SnippetPicker } from "./SnippetPicker.js";
+import { TodoPicker } from "./TodoPicker.js";
 import { matchRoutes } from "../session/routing.js";
+import { expandSnippetText, insertSnippet, normalizeSnippetName } from "../session/snippets.js";
+import { loadTodos, saveTodos, type TodoItem } from "../tools/todos.js";
+import { mergeOllamaProfiles, OLLAMA_PROFILE_NAME, ollamaProbe, OLLAMA_URL } from "../tools/ollama.js";
 import { Overlay } from "./Overlay.js";
 import { ProfilePicker } from "./ProfilePicker.js";
 import { SearchDialog, type SearchMatch } from "./SearchDialog.js";
@@ -56,7 +61,7 @@ import { busyStatus } from "../util/busyStatus.js";
 import { contextualTip, rotatingTip } from "../util/tips.js";
 import { DOUBLE_ESC_MS, escAction } from "../util/esc.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | "compareModel" | "fallback" | "commit" | "route" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | "compareModel" | "fallback" | "commit" | "route" | "snippet" | "todo" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -216,6 +221,7 @@ export function App({
     message: CommitMessage;
     busy: boolean;
   } | null>(null);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
   const [search, setSearch] = useState<{ query: string; matches: SearchMatch[] } | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [blink, setBlink] = useState(0);
@@ -1400,6 +1406,9 @@ export function App({
       case "/commit":
         runCommit();
         break;
+      case "/ollama":
+        runOllama();
+        break;
       case "/theme":
         openOverlay("theme");
         break;
@@ -1546,6 +1555,81 @@ export function App({
         openOverlay("route");
         break;
       }
+      case "/todo": {
+        const rest = trimmed.replace(/^\/todo\b\s*/i, "").trim();
+        const persistTodos = (next: TodoItem[]): void => {
+          saveTodos(process.cwd(), next);
+          setTodos(next);
+        };
+        if (/^clear$/i.test(rest)) {
+          persistTodos([]);
+          flashNote("✓ todos cleared");
+          break;
+        }
+        const add = rest.match(/^add\s+([\s\S]+)$/);
+        if (add) {
+          persistTodos([...loadTodos(process.cwd()), { text: (add[1] ?? "").replace(/\\n/g, "\n").trim().slice(0, 300), done: false }]);
+          flashNote(`✓ todo added: "${add[1]}"`);
+          break;
+        }
+        setTodos(loadTodos(process.cwd()));
+        openOverlay("todo");
+        break;
+      }
+      case "/sn": {
+        const rest = trimmed.replace(/^\/sn\b\s*/i, "").trim();
+        const snippetArg = matched.arg?.trim();
+        const updateSnippets = (next: Snippet[]): void => {
+          const nextConfig = { ...activeConfig, snippets: next };
+          saveConfig(nextConfig);
+          setActiveConfig(nextConfig);
+        };
+        if (/^clear$/i.test(rest)) {
+          updateSnippets([]);
+          flashNote("✓ snippets cleared");
+          break;
+        }
+        const rm = rest.match(/^rm\s+(\S+)$/);
+        if (rm) {
+          const target = normalizeSnippetName(rm[1] ?? "");
+          const next = (activeConfig.snippets ?? []).filter((entry) => normalizeSnippetName(entry.name) !== target);
+          updateSnippets(next);
+          flashNote(next.length === (activeConfig.snippets ?? []).length ? `no snippet named "${rm[1]}"` : `✗ removed "${rm[1]}"`);
+          break;
+        }
+        const add = rest.match(/^add\s+(\S+)\s+([\s\S]+)$/);
+        if (add) {
+          const next = [...(activeConfig.snippets ?? []), { name: normalizeSnippetName(add[1] ?? ""), text: expandSnippetText(add[2] ?? "") }];
+          updateSnippets(next);
+          flashNote(`✓ snippet "${add[1]}" saved`);
+          break;
+        }
+        const save = rest.match(/^save\s+(\S+)$/);
+        if (save) {
+          const lastPrompt = sent[sent.length - 1];
+          if (!lastPrompt || lastPrompt.startsWith("/")) {
+            flashNote("nothing to save yet — send a prompt first, then /sn save <name>");
+            break;
+          }
+          const next = [...(activeConfig.snippets ?? []), { name: normalizeSnippetName(save[1] ?? ""), text: lastPrompt }];
+          updateSnippets(next);
+          flashNote(`✓ saved last prompt as "${save[1]}"`);
+          break;
+        }
+        if (snippetArg) {
+          const target = normalizeSnippetName(snippetArg);
+          const snippet = (activeConfig.snippets ?? []).find((entry) => normalizeSnippetName(entry.name) === target);
+          if (!snippet) {
+            flashNote(`no snippet named "${snippetArg}" — type /sn to browse`);
+            break;
+          }
+          write(snippet.text, 0);
+          flashNote(`✓ "${snippet.name}" inserted into input`);
+          break;
+        }
+        openOverlay("snippet");
+        break;
+      }
       case "/subagent": {
         if (subRunningRef.current > 0) {
           flashNote("⚠ subagents already running — wait or press esc");
@@ -1608,6 +1692,29 @@ export function App({
     pricingRef.current = null;
     switchModel(profile.defaultModel);
     flashNote(`✓ Profile "${name}" active`);
+  }
+
+  function runOllama(): void {
+    flashNote(`probing Ollama at ${OLLAMA_URL}…`);
+    void ollamaProbe()
+      .then((found) => {
+        if (!found) {
+          flashNote(`no Ollama server answered at ${OLLAMA_URL} — is \`ollama serve\` running?`);
+          return;
+        }
+        const merged = mergeOllamaProfiles(activeConfig.profiles ?? {}, found);
+        const profile = merged.profiles[OLLAMA_PROFILE_NAME];
+        if (!profile) return;
+        saveConfig({ ...profile, profiles: merged.profiles });
+        setActiveConfig({ ...profile, profiles: merged.profiles });
+        setProfileName(OLLAMA_PROFILE_NAME);
+        pricingRef.current = null;
+        switchModel(merged.model);
+        flashNote(
+          `✓ Ollama: ${found.models.join(", ")} — ${merged.created ? "profile created" : "using profile"}, model ${merged.model}`,
+        );
+      })
+      .catch((cause: unknown) => flashNote(`ollama setup failed: ${cause instanceof Error ? cause.message : String(cause)}`));
   }
 
   const chat = useMemo(() => {
@@ -1924,6 +2031,32 @@ export function App({
             const nextConfig = { ...activeConfig, routes: next };
             saveConfig(nextConfig);
             setActiveConfig(nextConfig);
+          }}
+          onClose={closeOverlay}
+        />
+      ) : null}
+      {overlay === "snippet" ? (
+        <SnippetPicker
+          snippets={activeConfig.snippets ?? []}
+          onInsert={(snippet) => {
+            write(snippet.text, 0);
+            closeOverlay();
+            flashNote(`✓ "${snippet.name}" inserted into input`);
+          }}
+          onUpsert={(next) => {
+            const nextConfig = { ...activeConfig, snippets: next };
+            saveConfig(nextConfig);
+            setActiveConfig(nextConfig);
+          }}
+          onClose={closeOverlay}
+        />
+      ) : null}
+      {overlay === "todo" ? (
+        <TodoPicker
+          items={todos}
+          onUpsert={(next) => {
+            saveTodos(process.cwd(), next);
+            setTodos(next);
           }}
           onClose={closeOverlay}
         />

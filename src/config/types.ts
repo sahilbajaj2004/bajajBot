@@ -16,6 +16,11 @@ export interface RouteRule {
   label?: string;
 }
 
+export interface Snippet {
+  name: string;
+  text: string;
+}
+
 export interface Config {
   provider: "openrouter" | "custom";
   apiKey: string;
@@ -52,6 +57,12 @@ export interface Config {
    * model ID or `profile:<name>`. Maintained with `/route`.
    */
   routes?: RouteRule[];
+  /**
+   * Named prompt templates. `/sn <name>` inserts a snippet's text into the
+   * input box; `/sn save <name>` stores your last sent message. Managed with
+   * the `/sn` picker.
+   */
+  snippets?: Snippet[];
   /** Web search backend for the agent's web_search tool. Default: duckduckgo (no key). */
   webSearch?: {
     provider: "duckduckgo" | "brave" | "tavily" | "searxng";
