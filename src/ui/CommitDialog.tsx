@@ -42,9 +42,6 @@ export function CommitDialog({
     if (input?.toLowerCase() === "n") return onRegenerate();
   });
 
-  const statusColor = (status: CommitStat["status"]): string | undefined =>
-    status === "A" || status === "??" ? theme.success : status === "D" ? theme.danger : undefined;
-
   return (
     <Overlay title={busy ? "Commit · writing message…" : "Commit"}>
       {busy ? null : (

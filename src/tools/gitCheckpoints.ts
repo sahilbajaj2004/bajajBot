@@ -63,7 +63,7 @@ export async function createSnapshot(
       });
       return stdout.trim();
     };
-    const topLevel = await run(["rev-parse", "--show-toplevel"]);
+    await run(["rev-parse", "--show-toplevel"]);
     indexFile = mkdtempSync(join(tmpdir(), "bajajbot-idx-"));
     const indexEnv = { GIT_INDEX_FILE: join(indexFile, "index") };
     await run(["add", "-A", "."], indexEnv).catch(() => undefined);

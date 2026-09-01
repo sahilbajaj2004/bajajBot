@@ -38,8 +38,12 @@ npx bajajbot
 - **Prompt snippets** — `/sn` stores named templates in your config: send a great prompt then `/sn save deploy` to reuse it, or browse/insert with the `/sn` picker
 - **Persistent todos** — `/todo` keeps a per-project task list in `.bajajbot/todos.json`; the agent reads it and can add/tick items itself via the `update_todos` tool while working
 - **Ollama auto-setup** — `/ollama` finds your local Ollama server (`http://localhost:11434/v1`), creates a ready-to-use profile listing the installed models, and switches you to it in one shot
+- **Command palette** — press `⌃k` (or `/help`) for a searchable command finder that filters by name *and* description and runs the selected command in place
+- **Repo map + `/map`** — the agent's system prompt auto-includes a compact map of your project (directories, notable files, extension counts), so it navigates the tree without blind probing first; `/map` shows you the same map
+- **Session branching** — `/branch` forks the current chat into a diverging thread; the original stays intact, and `/sessions` marks forks (`↳ fork of …`) so you can switch between them
 - **Non-interactive mode** — `bajajbot -p "prompt"` with piped stdin, for scripts and CI
 - `/usage` dashboard + `spendLimitUsd` guardrail — tokens and estimated cost per session and across all chats
+- `/schedule` cron prompts — register 5-field cron expressions (`minute hour day-of-month month day-of-week`) that run headless turns on their own sessions (`add`, `rm`, `run`, list)
 - Auto-generated session titles, first-run setup wizard that verifies your endpoint/key/model live, daily update check
 - Markdown replies with syntax-highlighted code, mouse-wheel scrolling, drag-to-select copying
 - Cross-platform: macOS, Linux, Windows
@@ -142,6 +146,7 @@ bajajbot config unset temperature
 | `/commit` | — | Round up the whole working tree (`git add -A`), model writes a conventional message, press y to commit (n regenerates, ⌃e edits the subject, esc cancels). Requires `git user.name`/`user.email` |
 | `/theme` | — | Pick a UI colorway (arrow keys, live preview swatches); saved to your config |
 | `/usage` | — | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
+| `/schedule` | — | List scheduled prompts · `add <name> "<cron: minute hour dom month dow>" "<prompt>"`, `rm <name>`, `run <name>` |
 | `/btw <question>` | required | Instant side question — answered in 1–2 sentences even mid-task, never enters the chat history |
 | `/compare <question>` | required | Ask two models the same question side by side — pick the winner to keep (1 = A, 2 = B, esc = discard both) |
 | `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents — any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
@@ -150,16 +155,18 @@ bajajbot config unset temperature
 | `/sn` \| `/sn <name>` \| `/sn save <name>` \| `/sn add <name> <text>` \| `/sn rm <name>` | optional | Prompt snippets: picker inserts into your input (type filters, ⌃d deletes, a adds), `<name>` inserts, `save` stores your last sent prompt, `add` stores inline text (`\n` = newline), `rm` removes one |
 | `/todo` \| `/todo add <text>` \| `/todo clear` | optional | Persistent per-project todos: picker toggles (↵/space), deletes (⌃d), clears done (c) and adds (a); the agent updates the same list via the `update_todos` tool |
 | `/ollama` | optional | Detect a running local Ollama, create the `ollama` profile (`http://localhost:11434/v1`), list installed models, and switch to the first one |
+| `/map` | — | Print the same compact project map the agent sees (directories, notable files, extension counts) — never enters the chat history |
 | `/copy` | — | Copy the last assistant reply to the clipboard |
 | `/retry` | — | Regenerate the last assistant reply |
 | `/undo` | — | Remove the last exchange and revert its file changes |
 | `/export` | optional `json` | Save the chat to `bajajbot-<session>.md` (or `.json`) |
 | `/search <text>` | required | Find text in this chat and jump between matches |
-| `/sessions` | — | Resume a saved chat from an overlay |
+| `/sessions` | — | Resume a saved chat from an overlay; forks (see `/branch`) are marked `↳ fork of …` |
+| `/branch` | — | Fork the current chat into a diverging thread — copies messages, plan and usage; the original stays intact, and `/sessions` switches between the two |
 | `/profile` | — | Switch a saved provider profile |
 | `/new` | — | Start a fresh chat (plan board resets too) |
 | `/logout` | — | Delete all config and sessions |
-| `/help` | — | Show the command list inside the app |
+| `/help` | — | Open the command palette — type to filter by name *or* description, enter runs the command (⌃k does the same from anywhere) |
 
 Tip: type `/` and use **Tab** / arrows — every command autocompletes.
 

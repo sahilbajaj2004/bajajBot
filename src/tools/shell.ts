@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { platform } from "node:os";
-import type { ToolArgs, ToolDef } from "./types.js";
+import type { ToolDef } from "./types.js";
 
 const MAX_OUTPUT = 10_000;
 const IS_WINDOWS = platform() === "win32";

@@ -51,4 +51,6 @@ export interface Session {
   usage?: SessionUsage;
   /** Visible task plan the agent maintains via set_plan. */
   plan?: PlanItem[];
+  /** For forks: the id of the session this conversation was branched from. */
+  parentId?: string;
 }

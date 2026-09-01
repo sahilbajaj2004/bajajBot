@@ -9,7 +9,7 @@ export function SessionPicker({
   onSelect,
   currentId,
 }: {
-  sessions: { id: string; createdAt: string; title?: string; preview: string }[];
+  sessions: { id: string; createdAt: string; title?: string; preview: string; parentId?: string }[];
   onSelect: (id?: string) => void;
   /** The open session, marked in the list. */
   currentId?: string;
@@ -18,6 +18,7 @@ export function SessionPicker({
   const active = Math.min(selected, Math.max(0, sessions.length - 1));
   const { viewSize, start } = useWindow(sessions.length, active);
   const visible = sessions.slice(start, start + viewSize);
+  const byId = new Map(sessions.map((session) => [session.id, session]));
 
   useInput((_input, key) => {
     if (key.upArrow) setSelected(Math.max(0, active - 1));
@@ -29,14 +30,18 @@ export function SessionPicker({
   });
 
   return (
-    <Overlay title="Resume session">
+    <Overlay title={sessions.some((session) => session.parentId) ? "Resume session — forks marked ↳" : "Resume session"}>
       {sessions.length === 0 ? <Text dimColor> No saved sessions.</Text> : null}
       {visible.map((session, index) => {
         const isActive = start + index === active;
+        const parent = session.parentId ? byId.get(session.parentId) : undefined;
         return (
           <Text key={session.id} bold={isActive} color={isActive ? theme.accent : undefined}>
             {` ${isActive ? "›" : " "} ${session.title ?? session.preview} `}
             <Text dimColor>· {session.id}</Text>
+            {session.parentId ? (
+              <Text dimColor>{` ↳ fork of ${parent?.title ?? parent?.preview ?? session.parentId}`}</Text>
+            ) : null}
             {session.id === currentId ? <Text bold color={theme.success}> · current</Text> : null}
           </Text>
         );

@@ -21,7 +21,7 @@ export function loadSession(id: string): Session {
   return JSON.parse(readFileSync(sessionPath(id), "utf8")) as Session;
 }
 
-export function listSessions(): { id: string; createdAt: string; title?: string; preview: string }[] {
+export function listSessions(): { id: string; createdAt: string; title?: string; preview: string; parentId?: string }[] {
   if (!existsSync(sessionsDir())) return [];
   return readdirSync(sessionsDir())
     .filter((file) => file.endsWith(".json"))
@@ -32,6 +32,7 @@ export function listSessions(): { id: string; createdAt: string; title?: string;
       createdAt: session.createdAt,
       title: session.title,
       preview: session.messages.find((message) => message.role === "user")?.content.slice(0, 60) || "(empty chat)",
+      parentId: session.parentId,
     }));
 }
 
@@ -41,4 +42,25 @@ export function loadAllSessions(): Session[] {
   return readdirSync(sessionsDir())
     .filter((file) => file.endsWith(".json"))
     .map((file) => JSON.parse(readFileSync(join(sessionsDir(), file), "utf8")) as Session);
+}
+
+/** Copy a session into a new diverging thread. The original is left untouched. */
+export function forkSession(source: Session): Session {
+  const now = new Date().toISOString();
+  let id = `chat-${Date.now()}`;
+  for (let attempt = 1; attempt > 0 && attempt < 100 && existsSync(sessionPath(id)); attempt += 1) {
+    id = `chat-${Date.now()}-${attempt}`;
+  }
+  const fork: Session = {
+    ...source,
+    id,
+    createdAt: now,
+    updatedAt: now,
+    messages: source.messages.map((message) => ({ ...message })),
+    plan: source.plan?.map((item) => ({ ...item })),
+    usage: source.usage ? { ...source.usage } : undefined,
+    parentId: source.id,
+  };
+  saveSession(fork);
+  return fork;
 }

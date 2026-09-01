@@ -11,11 +11,15 @@ import { compactMessages, estimateTokens, tokenLimit } from "../session/compact.
 import { loadAllSessions } from "../session/history.js";
 import { addUsage, aggregateUsage, emptyUsage } from "../session/usage.js";
 import { deriveSessionTitle } from "./title.js";
-import { createSession, listSessions, loadSession, saveSession } from "../session/history.js";
+import { createSession, forkSession, listSessions, loadSession, saveSession } from "../session/history.js";
+import { startScheduler, stopScheduler } from "../schedule/scheduler.js";
+import { addSchedule, loadSchedules, parseQuotedArgs, removeSchedule } from "../schedule/store.js";
+import { runPrintTurn } from "../commands/printCmd.js";
+import { repositoryMap } from "../tools/repoMap.js";
 import type { Message, PlanItem, Session, ToolCall } from "../session/types.js";
 import { PlanBoard } from "./PlanBoard.js";
 import { executeTool, systemPrompt, toolSchemas } from "../tools/index.js";
-import { listSkills, readSkillFile } from "../tools/skills.js";
+import { listSkills } from "../tools/skills.js";
 import { restoreMutations } from "../tools/undo.js";
 import { createSnapshot, listSnapshots, restoreSnapshot, sessionChangedFiles } from "../tools/gitCheckpoints.js";
 import { commitTree, diffForContext, filesSummary, gitUserConfigured, parseCommitMessage, worktreeChanges, type CommitMessage, type CommitStat } from "../tools/gitCommit.js";
@@ -25,8 +29,7 @@ import type { FileMutation, ToolContext } from "../tools/types.js";
 import { buildVisionContent, extractAttachments } from "../util/attachments.js";
 import { listPathSuggestions } from "./pathSuggest.js";
 import { Autocomplete } from "./Autocomplete.js";
-import { COMMANDS, filterCommands, matchCommand } from "./commands.js";
-import { copyToClipboard } from "./clipboard.js";
+import { COMMANDS, filterCommands, matchCommand } from "./commands.js";import { copyToClipboard } from "./clipboard.js";
 import { InputBox } from "./InputBox.js";
 import { ChatViewport, buildChatLines, wrapText, type ChatLine, type Highlight } from "./MessageList.js";
 import type { MouseStdin } from "./mouse.js";
@@ -35,9 +38,10 @@ import { FallbackPicker } from "./FallbackPicker.js";
 import { CommitDialog } from "./CommitDialog.js";
 import { RoutePicker } from "./RoutePicker.js";
 import { SnippetPicker } from "./SnippetPicker.js";
+import { CommandPalette } from "./CommandPalette.js";
 import { TodoPicker } from "./TodoPicker.js";
 import { matchRoutes } from "../session/routing.js";
-import { expandSnippetText, insertSnippet, normalizeSnippetName } from "../session/snippets.js";
+import { expandSnippetText, normalizeSnippetName } from "../session/snippets.js";
 import { loadTodos, saveTodos, type TodoItem } from "../tools/todos.js";
 import { mergeOllamaProfiles, OLLAMA_PROFILE_NAME, ollamaProbe, OLLAMA_URL } from "../tools/ollama.js";
 import { Overlay } from "./Overlay.js";
@@ -52,7 +56,7 @@ import { MemoryOverlay } from "./MemoryOverlay.js";
 import { UsagePanel } from "./UsagePanel.js";
 import { extractSelectedText, normalizeRect, type Rect } from "./select.js";
 import { StatusBar } from "./StatusBar.js";
-import { sessionTitle, setTerminalTitle } from "./title.js";
+import { sessionTitle, setTerminalTitle, shortSessionId } from "./title.js";
 import { DEFAULT_COLUMNS, DEFAULT_ROWS, applyTheme, theme } from "./theme.js";
 import { Splash } from "./Welcome.js";
 import { cycleHistory } from "./history.js";
@@ -61,7 +65,7 @@ import { busyStatus } from "../util/busyStatus.js";
 import { contextualTip, rotatingTip } from "../util/tips.js";
 import { DOUBLE_ESC_MS, escAction } from "../util/esc.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "help" | "logout" | "compareModel" | "fallback" | "commit" | "route" | "snippet" | "todo" | null;
+type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "logout" | "compareModel" | "fallback" | "commit" | "route" | "snippet" | "todo" | "palette" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -72,6 +76,7 @@ interface ConfirmRequest {
 /** A "/btw" side question and its answer — ephemeral, never persisted. */
 interface AsideEntry {
   id: number;
+  kind: "btw" | "map";
   q: string;
   a: string;
   pending: boolean;
@@ -144,24 +149,6 @@ const ERROR_RESERVED_ROWS = 3;
 const MIN_CHAT_BUDGET = 5;
 const MAX_AUTOCOMPLETE_ROWS = 5;
 
-function HelpDialog({ onClose }: { onClose: () => void }) {
-  useInput((_character, key) => {
-    if (key.escape || key.return) onClose();
-  });
-  return (
-    <Overlay title="Commands">
-      {COMMANDS.map((command) => (
-        <Text key={command.name}>
-          {"  "}
-          {command.name.padEnd(11)}
-          <Text dimColor>{command.description}</Text>
-        </Text>
-      ))}
-      <Text dimColor>{"  "}esc / enter close</Text>
-    </Overlay>
-  );
-}
-
 function LogoutDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
   useInput((character, key) => {
     if (key.escape) return onClose();
@@ -202,6 +189,8 @@ export function App({
   initialPrompt?: string;
 }) {
   const [activeConfig, setActiveConfig] = useState<Config>(config);
+  const configRef = useRef(config);
+  configRef.current = activeConfig;
   const [profileName, setProfileName] = useState("");
   const [session, setSession] = useState<Session>(initialSession);
   const [completed, setCompleted] = useState<Message[]>(initialSession.messages);
@@ -404,7 +393,6 @@ export function App({
   const noSessions: ReturnType<typeof listSessions> = [];
   const sessionRows = useMemo(() => (overlay === "sessions" ? listSessions() : noSessions), [overlay]);
   const usageTotals = useMemo(() => (overlay === "usage" ? aggregateUsage(loadAllSessions()) : null), [overlay]);
-  const snapshots = useMemo(() => (overlay === "checkpoints" ? listSnapshots(process.cwd()) : []), [overlay]);
   const skillList = useMemo(() => (overlay === "skills" ? listSkills(process.cwd()) : []), [overlay]);
   const changedFiles = useMemo(() => (overlay === "changes" ? sessionChangedFiles(process.cwd()) : []), [overlay]);
   const memoryFacts = useMemo(() => (overlay === "memory" ? readMemory() : []), [overlay]);
@@ -458,7 +446,9 @@ export function App({
   useEffect(() => {
     if (launched.current) return;
     launched.current = true;
+    startScheduler(() => configRef.current);
     if (initialPrompt?.trim()) void submit(initialPrompt.trim());
+    return () => stopScheduler();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -496,6 +486,10 @@ export function App({
       return;
     }
     if (overlay) return;
+    if (key.ctrl && character?.toLowerCase() === "k") {
+      openOverlay("palette");
+      return;
+    }
     if (key.escape && subRunningRef.current > 0) {
       cancelSubagents();
       return;
@@ -701,7 +695,7 @@ export function App({
     }
     write("", 0);
     const id = ++asideSeqRef.current;
-    setAsides((prev) => [...prev, { id, q, a: "", pending: true }]);
+    setAsides((prev) => [...prev, { id, kind: "btw", q, a: "", pending: true }]);
     const controller = new AbortController();
     asideAbortRef.current = controller;
     try {
@@ -1310,6 +1304,18 @@ export function App({
     setError("");
   }
 
+  function forkCurrent(): void {
+    const fork = forkSession(session);
+    setSession(fork);
+    setCompleted(fork.messages);
+    setPlan(fork.plan ?? []);
+    setAsides([]);
+    setTokens(null);
+    setCost(null);
+    setError("");
+    flashNote(`✓ forked into ${shortSessionId(fork.id)} — parent intact`);
+  }
+
   function logout(): void {
     const removed = removeConfig();
     exit(removed ? "All BajajBot data removed. Run `bajajbot` to set up again." : "Nothing to remove.");
@@ -1389,7 +1395,7 @@ export function App({
     write("", 0);
     switch (matched.command.name) {
       case "/help":
-        openOverlay("help");
+        openOverlay("palette");
         break;
       case "/usage":
         openOverlay("usage");
@@ -1509,6 +1515,75 @@ export function App({
         }
         setSearch({ query, matches });
         openOverlay("search");
+        break;
+      }
+      case "/map": {
+        const map = repositoryMap(process.cwd()) || "(empty project — nothing to map yet)";
+        const mapId = ++asideSeqRef.current;
+        setAsides((prev) => [
+          ...prev.filter((entry) => entry.kind !== "map"),
+          { id: mapId, kind: "map", q: "project map", a: map, pending: false },
+        ]);
+        break;
+      }
+      case "/schedule": {
+        const rest = trimmed.replace(/^\/schedule\b\s*/i, "").trim();
+        const tokens = parseQuotedArgs(rest);
+        const sub = tokens[0] ?? "";
+        if (sub === "rm") {
+          const name = tokens[1] ?? "";
+          if (removeSchedule(name)) flashNote(`✓ removed schedule ${name}`);
+          else setError(`No schedule named "${name}"`);
+        } else if (sub === "add") {
+          const name = tokens[1] ?? "";
+          const cron = tokens[2] ?? "";
+          const prompt = tokens[3] ?? "";
+          if (!name || !cron || !prompt) {
+            setError('Usage: /schedule add <name> "<min hour dom month dow>" "<prompt>"');
+            break;
+          }
+          try {
+            const created = addSchedule({ name, cron, prompt });
+            flashNote(`✓ schedule ${created.name} · next ${new Date(created.nextRunISO ?? "").toLocaleString()}`);
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          }
+        } else if (sub === "run") {
+          const name = tokens[1] ?? "";
+          const target = loadSchedules().find((s) => s.name === name);
+          if (!target) {
+            setError(`No schedule named "${name}"`);
+          } else {
+            flashNote(`↗ running ${name}…`);
+            void (async () => {
+              try {
+                const { reply } = await runPrintTurn(configRef.current, target.prompt);
+                saveSession({
+                  ...createSession(target.model ?? configRef.current.defaultModel ?? "unknown"),
+                  title: `schedule: ${target.name}`,
+                  messages: [
+                    { role: "user", content: target.prompt, timestamp: new Date().toISOString() },
+                    { role: "assistant", content: reply || "(no reply)", timestamp: new Date().toISOString() },
+                  ],
+                });
+                flashNote(`✓ ${name} done — saved to /sessions`);
+              } catch (cause) {
+                setError(cause instanceof Error ? cause.message : String(cause));
+              }
+            })();
+          }
+        } else {
+          const schedules = loadSchedules();
+          if (!schedules.length) {
+            flashNote('No schedules · /schedule add <name> "<min hour dom month dow>" "<prompt>"');
+          } else {
+            flashNote(
+              schedules
+                .map((s) => `${s.name} ↦ ${s.cron} (next ${s.nextRunISO ? new Date(s.nextRunISO).toLocaleString() : "—"})`)
+                .join(" · "),
+            );
+          }
+        }
         break;
       }
       case "/btw":
@@ -1664,6 +1739,9 @@ export function App({
       case "/sessions":
         openOverlay("sessions");
         break;
+      case "/branch":
+        forkCurrent();
+        break;
       case "/profile":
         if (Object.keys(activeConfig.profiles ?? {}).length === 0) {
           setError("No profiles saved. Use `bajajbot profile save <name>`.");
@@ -1727,6 +1805,23 @@ export function App({
     const lines = buildChatLines(messages, columns);
     asides.forEach((entry, asideIndex) => {
       const base = `a${entry.id}`;
+      if (entry.kind === "map") {
+        lines.push({
+          key: `${base}q`,
+          node: <Text dimColor>{`  map · ${entry.q}`}</Text>,
+          text: `  map · ${entry.q}`,
+          messageIndex: -1,
+        });
+        entry.a.split("\n").forEach((row, rowIndex) => {
+          lines.push({
+            key: `${base}r${rowIndex}`,
+            node: <Text dimColor>{row}</Text>,
+            text: row,
+            messageIndex: -1,
+          });
+        });
+        return;
+      }
       lines.push({
         key: `${base}q`,
         node: <Text dimColor>{`  btw · ${entry.q}`}</Text>,
@@ -1919,7 +2014,16 @@ export function App({
           autoSelected={autoSelected}
         />
       ) : null}
-      {overlay === "help" ? <HelpDialog onClose={closeOverlay} /> : null}
+      {overlay === "palette" ? (
+        <CommandPalette
+          commands={COMMANDS}
+          onRun={(command) => {
+            closeOverlay();
+            run(command.name);
+          }}
+          onClose={closeOverlay}
+        />
+      ) : null}
       {overlay === "usage" && usageTotals ? (
         <Overlay title="Usage">
           <UsagePanel totals={usageTotals} />

@@ -26,6 +26,21 @@ const FEATURES = [
     title: "It remembers what you teach it",
     body: "Durable facts persist across sessions, BAJAJBOT.md reads your project rules, and markdown skills load on demand. Re-read files every message, so edits apply instantly.",
   },
+  {
+    cmd: "automation.schedule",
+    title: "Cron prompts that run while you're away",
+    body: "/schedule registers 5-field cron expressions that fire headless turns into their own sessions — standups, digests, reminders. Add, remove, list, or /schedule run one now.",
+  },
+  {
+    cmd: "ui.palette",
+    title: "Every command, one keystroke away",
+    body: "Press ⌃k for a searchable command palette that filters by name and description, then runs the picked command in place. No more memorizing slashes.",
+  },
+  {
+    cmd: "project.context",
+    title: "It already knows your project",
+    body: "A repo map is injected into the agent's context so it navigates without blind probing (/map shows you the same view). Persistent /todo keeps the project's task list in sync, and /branch forks a chat into a diverging thread.",
+  },
 ];
 
 export default function Features() {

@@ -16,7 +16,7 @@ const IMAGE_MIME: Record<string, string> = {
 
 const ATTACHMENT_TOKEN = /(?:^|\s)@([^\s@][^\s]*)/g;
 
-function isImageFile(token: string, cwd: string): boolean {
+function isImageFile(token: string): boolean {
   return Boolean(IMAGE_MIME[extname(token.toLowerCase())]);
 }
 
@@ -30,7 +30,7 @@ export function extractAttachments(content: string, cwd: string): { texts: strin
     try {
       if (!statSync(full).isFile()) continue;
       if (!texts.includes(token) && !images.includes(token)) {
-        if (isImageFile(token, cwd)) images.push(token);
+        if (isImageFile(token)) images.push(token);
         else texts.push(token);
       }
     } catch {

@@ -12,6 +12,9 @@ const GROUPS = [
   {
     name: "work",
     items: [
+      ["/todo", "persistent per-project task list"],
+      ["/branch", "fork this chat into a new thread"],
+      ["/map", "see the project map the agent reads"],
       ["/checkpoints", "browse auto git snapshots"],
       ["/changes", "files touched this session"],
       ["/undo", "remove the last exchange"],
@@ -21,6 +24,9 @@ const GROUPS = [
   {
     name: "tune",
     items: [
+      ["/ollama", "wire up a local Ollama server"],
+      ["/schedule", "cron prompts on their own sessions"],
+      ["⌃k", "command palette, filters by name"],
       ["/model", "switch models mid-chat"],
       ["/theme", "six colorways, live preview"],
       ["/memory", "see what it remembers"],

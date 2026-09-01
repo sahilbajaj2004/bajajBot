@@ -16,7 +16,6 @@ export function ProfilePicker({
 }) {
   const names = Object.keys(profiles);
   const [selected, setSelected] = useState(0);
-  const index = Math.max(0, names.indexOf(active));
   const activeRow = Math.min(selected, Math.max(0, names.length - 1));
   const { viewSize, start } = useWindow(names.length, activeRow);
   const visible = names.slice(start, start + viewSize).map((name) => ({ name, profile: profiles[name] }));

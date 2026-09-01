@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { ToolArgs, ToolContext, ToolDef } from "./types.js";
+import type { ToolDef } from "./types.js";
 import { expandHome } from "../util/paths.js";
 
 const MAX_MATCHES = 200;
