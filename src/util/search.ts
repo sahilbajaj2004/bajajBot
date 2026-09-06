@@ -1,6 +1,6 @@
 /**
  * Web search backends behind the agent's web_search tool. The default
- * (duckduckgo) needs no key — it scrapes the HTML endpoint. Brave/Tavily use
+ * (duckduckgo) needs no key - it scrapes the HTML endpoint. Brave/Tavily use
  * free-tier API keys, SearXNG points at a self-hosted instance. All parsing
  * is pure so it can be tested offline against fixtures.
  */
@@ -18,7 +18,7 @@ export interface SearchResult {
 }
 
 const FETCH_TIMEOUT = 12_000;
-/** Full browser UA — the plain "bajajbot" one trips DDG's anomaly check more often. */
+/** Full browser UA - the plain "bajajbot" one trips DDG's anomaly check more often. */
 const BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0";
 
 async function fetchText(url: string, init: RequestInit = {}): Promise<string | null> {
@@ -59,7 +59,7 @@ export function unwrapDdgUrl(href: string): string {
 /** Parse the html.duckduckgo.com results page (markup as of 2026-08). */
 export function parseDdgHtml(html: string): SearchResult[] {
   const results: SearchResult[] = [];
-  // Class token only — real blocks look like class="links_main links_deep result__body".
+  // Class token only - real blocks look like class="links_main links_deep result__body".
   const blocks = html.split(/result__body/).slice(1);
   for (const block of blocks) {
     const linkMatch = block.match(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/);
@@ -81,7 +81,7 @@ export function parseDdgHtml(html: string): SearchResult[] {
 async function searchDuckDuckGo(query: string, count: number): Promise<SearchResult[]> {
   const body = new URLSearchParams({ q: query }).toString();
   // Primary: form POST. On a bot-anomaly page (202), retry once as GET with
-  // browser headers — different fingerprint usually passes.
+  // browser headers - different fingerprint usually passes.
   let html =
     (await fetchText("https://html.duckduckgo.com/html/", {
       method: "POST",

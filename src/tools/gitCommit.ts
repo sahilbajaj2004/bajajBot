@@ -63,7 +63,7 @@ export function worktreeChanges(cwd: string): CommitStat[] | null {
       const finalPath = renamed ? renamed[2] : path;
       const stage = xy[0] ?? " ";
       const work = xy[1] ?? " ";
-      if (stage === "!" || work === "!") continue; // ignored/conflicted — leave alone
+      if (stage === "!" || work === "!") continue; // ignored/conflicted - leave alone
       const status: CommitStat["status"] =
         stage === "?" ? "??" : stage === "R" || work === "R" ? "R" : stage === "D" ? "D" : work === "D" ? "D" : stage === "A" ? "A" : work === "A" ? "A" : stage === "M" || work === "M" ? "M" : stage === "C" ? "A" : "M";
       statuses.set(finalPath, { status, path: finalPath, added: 0, deleted: 0 });
@@ -76,7 +76,7 @@ export function worktreeChanges(cwd: string): CommitStat[] | null {
     const [addedText, deletedText, path] = line.split("\t");
     if (!path) continue;
     const record = statuses.get(path);
-    if (!record) continue; // reverted since status snapshot — keep status only
+    if (!record) continue; // reverted since status snapshot - keep status only
     record.added = Number(addedText) || 0;
     record.deleted = Number(deletedText) || 0;
   }
@@ -120,7 +120,7 @@ export function diffForContext(cwd: string, limit = 12_000): string {
       const content = readFileSync(join(cwd, entry.path), "utf8").slice(0, 4000);
       parts.push(`--- ${entry.path}\n+++ ${entry.path}\n@@ (new file)\n${content}`);
     } catch {
-      // unreadable — skip
+      // unreadable - skip
     }
     head = parts.join("\n");
     if (head.length >= limit) return head.slice(0, limit);

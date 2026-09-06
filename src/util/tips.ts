@@ -1,5 +1,5 @@
 /**
- * One contextual command hint for the status bar right slot — teaches the
+ * One contextual command hint for the status bar right slot - teaches the
  * relevant escape hatch for whatever the user is doing instead of static
  * filler text.
  */

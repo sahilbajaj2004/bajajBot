@@ -36,7 +36,7 @@ test("checkpoints chain newest-first and restore old file contents", async () =>
   const first = await createSnapshot(root, "first turn");
   assert.ok(first);
 
-  writeFileSync(join(root, "app.txt"), "version 2 — edited by agent\n");
+  writeFileSync(join(root, "app.txt"), "version 2 - edited by agent\n");
   writeFileSync(join(root, "extra.txt"), "created later\n");
   const second = await createSnapshot(root, "second turn");
   assert.ok(second && second !== first);

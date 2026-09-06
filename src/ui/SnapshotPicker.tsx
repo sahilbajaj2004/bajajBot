@@ -38,7 +38,7 @@ export function SnapshotPicker({
   return (
     <Overlay title="Checkpoints">
       {snapshots.length === 0 ? (
-        <Text dimColor>{" No checkpoints yet — they are created automatically after each reply (git projects only)."}</Text>
+        <Text dimColor>{" No checkpoints yet - they are created automatically after each reply (git projects only)."}</Text>
       ) : null}
       {visible.map((snapshot, index) => {
         const isActive = start + index === active;

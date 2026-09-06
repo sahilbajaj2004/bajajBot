@@ -30,7 +30,7 @@ export function SessionPicker({
   });
 
   return (
-    <Overlay title={sessions.some((session) => session.parentId) ? "Resume session — forks marked ↳" : "Resume session"}>
+    <Overlay title={sessions.some((session) => session.parentId) ? "Resume session - forks marked ↳" : "Resume session"}>
       {sessions.length === 0 ? <Text dimColor> No saved sessions.</Text> : null}
       {visible.map((session, index) => {
         const isActive = start + index === active;

@@ -32,7 +32,7 @@ export default function Statement() {
         viewport={{ once: true, margin: "-12%" }}
         transition={{ duration: 0.8, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
       >
-        one session. no dashboard, no tabs, no babysitting — every step
+        one session. no dashboard, no tabs, no babysitting - every step
         diffed, saved and undoable.
       </motion.p>
     </section>

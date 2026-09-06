@@ -75,7 +75,7 @@ export function memoryPromptBlock(options: { home?: string } = {}): string {
 export const memoryTool: ToolDef = {
   name: "memory",
   description:
-    "Persist durable facts across sessions — user preferences, project conventions, decisions, environment quirks. Not for secrets, tokens, or transient task state.",
+    "Persist durable facts across sessions - user preferences, project conventions, decisions, environment quirks. Not for secrets, tokens, or transient task state.",
   risky: false,
   parameters: {
     type: "object",
@@ -91,7 +91,7 @@ export const memoryTool: ToolDef = {
     if (action === "save") {
       const result = remember(String(args.fact ?? ""));
       if (!result.saved && !result.duplicate) return "Error: nothing to save (empty fact).";
-      return result.duplicate ? "Already in memory — unchanged." : "Saved to memory.";
+      return result.duplicate ? "Already in memory - unchanged." : "Saved to memory.";
     }
     if (action === "forget") {
       const removed = forget(String(args.fact ?? ""));

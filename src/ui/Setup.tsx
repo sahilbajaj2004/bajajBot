@@ -138,7 +138,7 @@ export function SetupWizard({ onFinish }: { onFinish: (config?: Config) => void 
             .slice(0, 3)
             .map((entry) => entry.id)
             .join(", ");
-          return setError(`"${model}" is not on this endpoint. Try: ${examples} — or press enter again to save it anyway.`);
+          return setError(`"${model}" is not on this endpoint. Try: ${examples} - or press enter again to save it anyway.`);
         }
       } catch (cause) {
         setChecking(false);

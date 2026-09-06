@@ -145,7 +145,7 @@ export function RoutePicker({
     <Overlay title={`Smart routes · ${rules.filter((rule) => rule.active !== false).length} active of ${rules.length}`}>
       {mode === "list" ? (
         rows.length === 1 ? (
-          <Text dimColor>{"  No routes yet — press a to add a keyword or /regex/ → model."}</Text>
+          <Text dimColor>{"  No routes yet - press a to add a keyword or /regex/ → model."}</Text>
         ) : (
           visible.map((row, index) => {
             const at = start + index;
@@ -160,7 +160,7 @@ export function RoutePicker({
       {mode === "pattern" ? (
         <>
           <Text bold color={theme.accent}>{`  › ${pattern}${pattern ? "" : "█"}`}</Text>
-          <Text dimColor>  Pattern matches your message — a word is a keyword, /.../ is a regex.</Text>
+          <Text dimColor>  Pattern matches your message - a word is a keyword, /.../ is a regex.</Text>
         </>
       ) : null}
       {mode === "model" ? (

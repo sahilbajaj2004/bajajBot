@@ -66,7 +66,7 @@ export function formatUsageTotals(totals: UsageTotals): string {
     `requests        ${totals.requests}`,
     `prompt tokens   ${fmtTokens(totals.promptTokens)}`,
     `reply tokens    ${fmtTokens(totals.completionTokens)}`,
-    `est. cost       ${totals.costUsd > 0 ? `$${totals.costUsd.toFixed(4)}` : totals.requests ? "$0 (free models)" : "—"}`,
+    `est. cost       ${totals.costUsd > 0 ? `$${totals.costUsd.toFixed(4)}` : totals.requests ? "$0 (free models)" : "-"}`,
   ];
   if (totals.byModel.length) {
     lines.push("", "top models");
@@ -75,6 +75,6 @@ export function formatUsageTotals(totals: UsageTotals): string {
       lines.push(`  ${entry.model}  (${entry.requests} req · ${fmtTokens(entry.promptTokens + entry.completionTokens)} tok${cost})`);
     }
   }
-  if (!totals.requests) lines.push("", "No usage recorded yet — totals build up as you chat.");
+  if (!totals.requests) lines.push("", "No usage recorded yet - totals build up as you chat.");
   return lines.join("\n");
 }

@@ -14,7 +14,7 @@ export function compilePattern(pattern: string): (text: string) => boolean {
       const compiled = new RegExp(body, "i");
       return compiled.test.bind(compiled);
     } catch {
-      // malformed pattern — fall through to a substring match on the body
+      // malformed pattern - fall through to a substring match on the body
     }
   }
   const needle = (body ?? pattern).toLowerCase();
@@ -34,7 +34,7 @@ export function matchRoutes(text: string, routes: RouteRule[] | undefined): Rout
         return { rule, label: rule.label ?? rule.model };
       }
     } catch {
-      // broken rule — skip it rather than breaking every turn
+      // broken rule - skip it rather than breaking every turn
     }
   }
   return null;

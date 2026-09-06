@@ -45,7 +45,7 @@ export const searchFiles: ToolDef = {
     type: "object",
     properties: {
       pattern: { type: "string", description: "Regular expression matched against every line, e.g. \"TODO|FIXME\" or \"class \\w+\"" },
-      path: { type: "string", description: "Directory to search — relative to the project, absolute, or ~/…; defaults to the project directory" },
+      path: { type: "string", description: "Directory to search - relative to the project, absolute, or ~/…; defaults to the project directory" },
       glob: { type: "string", description: 'Only search filenames matching this filter, e.g. "*.ts" or "*.js,*.jsx"' },
     },
     required: ["pattern"],

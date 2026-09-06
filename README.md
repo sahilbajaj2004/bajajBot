@@ -3,7 +3,7 @@
 **A terminal AI coding assistant for any OpenAI-compatible model.**
 
 Bring your own API key, pick your model, and chat with an agent that can read,
-write, edit, and run code directly in your project — all from your terminal.
+write, edit, and run code directly in your project - all from your terminal.
 BajajBot supports OpenRouter and custom endpoints such as Ollama, vLLM, and
 LM Studio, on macOS, Linux, and Windows.
 
@@ -14,36 +14,36 @@ npx bajajbot
 ## Features
 
 - Live token streaming in a clean terminal UI (Ink + React)
-- **Agent tools** — read/write/edit/delete files, search file contents, run shell commands, fetch web pages, load skills, and maintain a visible task plan
-- **Live plan board** — for multi-step tasks the agent shows a ✓/▸/○ checklist above your input, updating in real time
-- **Skills** — markdown playbooks from `.bajajbot/skills/`, plus folders installed for other agents (`~/.claude`, `~/.agents`, `~/.codex`)
-- **Project instructions** — drop a `BAJAJBOT.md` in your repo (or `~/.bajajbot/BAJAJBOT.md` for global rules); its contents are injected into every system prompt automatically
-- **Persistent memory** — the agent saves durable facts (your prefs, project conventions) to `~/.bajajbot/memory.md` and recalls them in every future session; inspect anytime with `/memory`
-- **Done notifications** — replies that take 3+ seconds ring the terminal bell and pop a desktop notification (OSC 9/777, tmux-aware), so you can switch windows while it works
-- **`/btw` side questions** — ask "btw, why?" mid-task and get an instant aside without derailing the running agent; the status bar teaches context-aware command hints as you go
-- **`/compare` A/B** — fire one question at two models, see answers side by side, press 1 or 2 to keep the winner into the chat history
-- **`/subagent` parallel research** — fan out background mini-agents (`/subagent summarize TODO.md | check node version | find bugs`) that investigate while you keep chatting; live status chips below the chat, esc cancels the batch, finished reports fold into the chat as boxed blocks
-- **File & image mentions** — type `@src/app.ts` to attach code, `@error.png` to attach images for vision models, with Tab autocomplete
+- **Agent tools** - read/write/edit/delete files, search file contents, run shell commands, fetch web pages, load skills, and maintain a visible task plan
+- **Live plan board** - for multi-step tasks the agent shows a ✓/▸/○ checklist above your input, updating in real time
+- **Skills** - markdown playbooks from `.bajajbot/skills/`, plus folders installed for other agents (`~/.claude`, `~/.agents`, `~/.codex`)
+- **Project instructions** - drop a `BAJAJBOT.md` in your repo (or `~/.bajajbot/BAJAJBOT.md` for global rules); its contents are injected into every system prompt automatically
+- **Persistent memory** - the agent saves durable facts (your prefs, project conventions) to `~/.bajajbot/memory.md` and recalls them in every future session; inspect anytime with `/memory`
+- **Done notifications** - replies that take 3+ seconds ring the terminal bell and pop a desktop notification (OSC 9/777, tmux-aware), so you can switch windows while it works
+- **`/btw` side questions** - ask "btw, why?" mid-task and get an instant aside without derailing the running agent; the status bar teaches context-aware command hints as you go
+- **`/compare` A/B** - fire one question at two models, see answers side by side, press 1 or 2 to keep the winner into the chat history
+- **`/subagent` parallel research** - fan out background mini-agents (`/subagent summarize TODO.md | check node version | find bugs`) that investigate while you keep chatting; live status chips below the chat, esc cancels the batch, finished reports fold into the chat as boxed blocks
+- **File & image mentions** - type `@src/app.ts` to attach code, `@error.png` to attach images for vision models, with Tab autocomplete
 - Risky actions require explicit confirmation with a colorized diff preview; nothing runs without your approval
 - Any model, switchable mid-chat with `/model`; recently-used models at top of picker; ctrl+f toggles ★ favorites (also settable via config)
 - Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
-- **Git checkpoints** — every reply auto-snapshots the project to a hidden ref (your branch/index/stash untouched); browse and restore with `/checkpoints`
-- **`/changes`** — every file the agent created/edited/deleted this session
-- **`/commit`** — AI writes a conventional commit message from your working-tree diff; review the suggested message and file stats, press y to commit the whole tree (n regenerates, ⌃e edits the subject, esc cancels)
-- **`/theme`** — six UI colorways (ember, ocean, matrix, rose, violet, mono), switchable live and persisted
-- **Auto-compaction** — long chats are summarized automatically instead of hitting the model's limit, with a live context meter in the status bar
-- **Rate-limit handling** — automatic retries with backoff, honors `Retry-After`, plain-English error messages
-- **Auto-failover chain** — on a rate limit, 5xx, or unreachable provider the turn automatically retries on each entry in config `fallbackModels`; manage the chain interactively with `/fallback` (picker: arrow keys + enter, type to filter, ctrl+d removes last) or set `fallbackModels` directly
-- **Smart routing** — `/route` rules pick the model per turn: write a keyword (or `/(regex)/`) that matches your message, then choose its model or a `profile:`; the first active match auto-routes that turn only
-- **Prompt snippets** — `/sn` stores named templates in your config: send a great prompt then `/sn save deploy` to reuse it, or browse/insert with the `/sn` picker
-- **Persistent todos** — `/todo` keeps a per-project task list in `.bajajbot/todos.json`; the agent reads it and can add/tick items itself via the `update_todos` tool while working
-- **Ollama auto-setup** — `/ollama` finds your local Ollama server (`http://localhost:11434/v1`), creates a ready-to-use profile listing the installed models, and switches you to it in one shot
-- **Command palette** — press `⌃k` (or `/help`) for a searchable command finder that filters by name *and* description and runs the selected command in place
-- **Repo map + `/map`** — the agent's system prompt auto-includes a compact map of your project (directories, notable files, extension counts), so it navigates the tree without blind probing first; `/map` shows you the same map
-- **Session branching** — `/branch` forks the current chat into a diverging thread; the original stays intact, and `/sessions` marks forks (`↳ fork of …`) so you can switch between them
-- **Non-interactive mode** — `bajajbot -p "prompt"` with piped stdin, for scripts and CI
-- `/usage` dashboard + `spendLimitUsd` guardrail — tokens and estimated cost per session and across all chats
-- `/schedule` cron prompts — register 5-field cron expressions (`minute hour day-of-month month day-of-week`) that run headless turns on their own sessions (`add`, `rm`, `run`, list)
+- **Git checkpoints** - every reply auto-snapshots the project to a hidden ref (your branch/index/stash untouched); browse and restore with `/checkpoints`
+- **`/changes`** - every file the agent created/edited/deleted this session
+- **`/commit`** - AI writes a conventional commit message from your working-tree diff; review the suggested message and file stats, press y to commit the whole tree (n regenerates, ⌃e edits the subject, esc cancels)
+- **`/theme`** - six UI colorways (ember, ocean, matrix, rose, violet, mono), switchable live and persisted
+- **Auto-compaction** - long chats are summarized automatically instead of hitting the model's limit, with a live context meter in the status bar
+- **Rate-limit handling** - automatic retries with backoff, honors `Retry-After`, plain-English error messages
+- **Auto-failover chain** - on a rate limit, 5xx, or unreachable provider the turn automatically retries on each entry in config `fallbackModels`; manage the chain interactively with `/fallback` (picker: arrow keys + enter, type to filter, ctrl+d removes last) or set `fallbackModels` directly
+- **Smart routing** - `/route` rules pick the model per turn: write a keyword (or `/(regex)/`) that matches your message, then choose its model or a `profile:`; the first active match auto-routes that turn only
+- **Prompt snippets** - `/sn` stores named templates in your config: send a great prompt then `/sn save deploy` to reuse it, or browse/insert with the `/sn` picker
+- **Persistent todos** - `/todo` keeps a per-project task list in `.bajajbot/todos.json`; the agent reads it and can add/tick items itself via the `update_todos` tool while working
+- **Ollama auto-setup** - `/ollama` finds your local Ollama server (`http://localhost:11434/v1`), creates a ready-to-use profile listing the installed models, and switches you to it in one shot
+- **Command palette** - press `⌃k` (or `/help`) for a searchable command finder that filters by name *and* description and runs the selected command in place
+- **Repo map + `/map`** - the agent's system prompt auto-includes a compact map of your project (directories, notable files, extension counts), so it navigates the tree without blind probing first; `/map` shows you the same map
+- **Session branching** - `/branch` forks the current chat into a diverging thread; the original stays intact, and `/sessions` marks forks (`↳ fork of …`) so you can switch between them
+- **Non-interactive mode** - `bajajbot -p "prompt"` with piped stdin, for scripts and CI
+- `/usage` dashboard + `spendLimitUsd` guardrail - tokens and estimated cost per session and across all chats
+- `/schedule` cron prompts - register 5-field cron expressions (`minute hour day-of-month month day-of-week`) that run headless turns on their own sessions (`add`, `rm`, `run`, list)
 - Auto-generated session titles, first-run setup wizard that verifies your endpoint/key/model live, daily update check
 - Markdown replies with syntax-highlighted code, mouse-wheel scrolling, drag-to-select copying
 - Cross-platform: macOS, Linux, Windows
@@ -65,7 +65,7 @@ bajajbot
 
 On first launch the setup wizard asks for:
 
-1. Provider — OpenRouter or a custom OpenAI-compatible endpoint
+1. Provider - OpenRouter or a custom OpenAI-compatible endpoint
 2. Your API key
 3. API base URL
 4. Default model ID, for example `openai/gpt-oss-20b:free`
@@ -121,10 +121,10 @@ saving. Configuration lives at `~/.bajajbot/config.json`.
 | `contextTokens` | integer ≥ 1000 | Token budget before auto-compaction triggers (default 12000) |
 | `spendLimitUsd` | number > 0 | Warn once when a session's estimated cost crosses this line |
 | `favoriteModels` | comma-separated IDs | Models pinned ★ to the top of the `/model` picker |
-| `fallbackModels` | comma-separated `model-id` \| `profile:<name>` | Auto-failover chain for the current turn when the provider rate-limits, 5xxs, or is unreachable. A `profile:` entry switches provider/endpoint (e.g. your local Ollama). Order matters — first usable entry is tried first |
+| `fallbackModels` | comma-separated `model-id` \| `profile:<name>` | Auto-failover chain for the current turn when the provider rate-limits, 5xxs, or is unreachable. A `profile:` entry switches provider/endpoint (e.g. your local Ollama). Order matters - first usable entry is tried first |
 | `checkpointLimit` | integer ≥ 2 | Max git snapshots kept per project; when full, the chain restarts and old ones are reclaimed by git GC (default 300) |
-| `theme` | theme name | UI colorway — one of `ember` (default), `ocean`, `matrix`, `rose`, `violet`, `mono`. Also switchable live with `/theme` |
-| `webSearch` | object | Backend for the agent's `web_search` tool: `{ "provider": "duckduckgo" \| "brave" \| "tavily" \| "searxng", "apiKey": "...", "searxUrl": "..." }` — default is keyless DuckDuckGo; Brave/Tavily need a free API key, SearXNG your instance URL |
+| `theme` | theme name | UI colorway - one of `ember` (default), `ocean`, `matrix`, `rose`, `violet`, `mono`. Also switchable live with `/theme` |
+| `webSearch` | object | Backend for the agent's `web_search` tool: `{ "provider": "duckduckgo" \| "brave" \| "tavily" \| "searxng", "apiKey": "...", "searxUrl": "..." }` - default is keyless DuckDuckGo; Brave/Tavily need a free API key, SearXNG your instance URL |
 
 Example:
 
@@ -139,36 +139,36 @@ bajajbot config unset temperature
 
 | Command | Argument | What it does |
 | --- | --- | --- |
-| `/model` | optional `<id>` | With an ID: switch model now. Without: open a searchable picker — type to filter, recently-used models at top, ctrl+f toggles ★ favorites, Enter chooses, or type any unlisted ID into the `+` row |
-| `/skills` | — | Browse every installed skill (project + global). `↑↓` select, **Enter runs it immediately**, esc closes |
-| `/checkpoints` | — | Browse automatic git snapshots of your project. Enter arms a restore, enter again confirms |
-| `/changes` | — | List files the agent created/edited/deleted this session (A/M/D color-coded) |
-| `/commit` | — | Round up the whole working tree (`git add -A`), model writes a conventional message, press y to commit (n regenerates, ⌃e edits the subject, esc cancels). Requires `git user.name`/`user.email` |
-| `/theme` | — | Pick a UI colorway (arrow keys, live preview swatches); saved to your config |
-| `/usage` | — | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
-| `/schedule` | — | List scheduled prompts · `add <name> "<cron: minute hour dom month dow>" "<prompt>"`, `rm <name>`, `run <name>` |
-| `/btw <question>` | required | Instant side question — answered in 1–2 sentences even mid-task, never enters the chat history |
-| `/compare <question>` | required | Ask two models the same question side by side — pick the winner to keep (1 = A, 2 = B, esc = discard both) |
-| `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents — any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
+| `/model` | optional `<id>` | With an ID: switch model now. Without: open a searchable picker - type to filter, recently-used models at top, ctrl+f toggles ★ favorites, Enter chooses, or type any unlisted ID into the `+` row |
+| `/skills` | - | Browse every installed skill (project + global). `↑↓` select, **Enter runs it immediately**, esc closes |
+| `/checkpoints` | - | Browse automatic git snapshots of your project. Enter arms a restore, enter again confirms |
+| `/changes` | - | List files the agent created/edited/deleted this session (A/M/D color-coded) |
+| `/commit` | - | Round up the whole working tree (`git add -A`), model writes a conventional message, press y to commit (n regenerates, ⌃e edits the subject, esc cancels). Requires `git user.name`/`user.email` |
+| `/theme` | - | Pick a UI colorway (arrow keys, live preview swatches); saved to your config |
+| `/usage` | - | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
+| `/schedule` | - | List scheduled prompts · `add <name> "<cron: minute hour dom month dow>" "<prompt>"`, `rm <name>`, `run <name>` |
+| `/btw <question>` | required | Instant side question - answered in 1–2 sentences even mid-task, never enters the chat history |
+| `/compare <question>` | required | Ask two models the same question side by side - pick the winner to keep (1 = A, 2 = B, esc = discard both) |
+| `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents - any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
 | `/fallback` \| `/fallback <id>` \| `/fallback clear` | optional | Interactive picker for the auto-failover chain (models + saved profiles; enter adds, ctrl+d removes last, esc done), or add a single model ID directly, or clear the chain |
 | `/route` \| `/route add "pat" <model>` \| `/route clear` | optional | Smart routing picker: toggle rules on/off, ⌃d deletes, a adds (pat = keyword or `/regex/`, then pick the model/profile). First match routes that turn; `add`/`clear` work without the picker |
 | `/sn` \| `/sn <name>` \| `/sn save <name>` \| `/sn add <name> <text>` \| `/sn rm <name>` | optional | Prompt snippets: picker inserts into your input (type filters, ⌃d deletes, a adds), `<name>` inserts, `save` stores your last sent prompt, `add` stores inline text (`\n` = newline), `rm` removes one |
 | `/todo` \| `/todo add <text>` \| `/todo clear` | optional | Persistent per-project todos: picker toggles (↵/space), deletes (⌃d), clears done (c) and adds (a); the agent updates the same list via the `update_todos` tool |
 | `/ollama` | optional | Detect a running local Ollama, create the `ollama` profile (`http://localhost:11434/v1`), list installed models, and switch to the first one |
-| `/map` | — | Print the same compact project map the agent sees (directories, notable files, extension counts) — never enters the chat history |
-| `/copy` | — | Copy the last assistant reply to the clipboard |
-| `/retry` | — | Regenerate the last assistant reply |
-| `/undo` | — | Remove the last exchange and revert its file changes |
+| `/map` | - | Print the same compact project map the agent sees (directories, notable files, extension counts) - never enters the chat history |
+| `/copy` | - | Copy the last assistant reply to the clipboard |
+| `/retry` | - | Regenerate the last assistant reply |
+| `/undo` | - | Remove the last exchange and revert its file changes |
 | `/export` | optional `json` | Save the chat to `bajajbot-<session>.md` (or `.json`) |
 | `/search <text>` | required | Find text in this chat and jump between matches |
-| `/sessions` | — | Resume a saved chat from an overlay; forks (see `/branch`) are marked `↳ fork of …` |
-| `/branch` | — | Fork the current chat into a diverging thread — copies messages, plan and usage; the original stays intact, and `/sessions` switches between the two |
-| `/profile` | — | Switch a saved provider profile |
-| `/new` | — | Start a fresh chat (plan board resets too) |
-| `/logout` | — | Delete all config and sessions |
-| `/help` | — | Open the command palette — type to filter by name *or* description, enter runs the command (⌃k does the same from anywhere) |
+| `/sessions` | - | Resume a saved chat from an overlay; forks (see `/branch`) are marked `↳ fork of …` |
+| `/branch` | - | Fork the current chat into a diverging thread - copies messages, plan and usage; the original stays intact, and `/sessions` switches between the two |
+| `/profile` | - | Switch a saved provider profile |
+| `/new` | - | Start a fresh chat (plan board resets too) |
+| `/logout` | - | Delete all config and sessions |
+| `/help` | - | Open the command palette - type to filter by name *or* description, enter runs the command (⌃k does the same from anywhere) |
 
-Tip: type `/` and use **Tab** / arrows — every command autocompletes.
+Tip: type `/` and use **Tab** / arrows - every command autocompletes.
 
 ## Keyboard shortcuts
 
@@ -184,7 +184,7 @@ y / n            Allow / deny a risky tool confirmation
 f                Pin or unpin ★ the highlighted model inside /model
 ```
 
-While the assistant is streaming you can keep typing — press Enter to queue
+While the assistant is streaming you can keep typing - press Enter to queue
 messages; they send automatically when the reply finishes.
 
 ---
@@ -200,15 +200,15 @@ The assistant can call these tools on your project:
 | `read_file` | Read a text file | No |
 | `list_dir` | List a directory | No |
 | `search_files` | Regex-search file contents across the tree (skips `node_modules`/`.git`/binaries, smart-case) | No |
-| `write_file` | Create or overwrite a file | Yes — diff shown |
-| `edit_file` | Replace an exact snippet in a file | Yes — diff shown |
+| `write_file` | Create or overwrite a file | Yes - diff shown |
+| `edit_file` | Replace an exact snippet in a file | Yes - diff shown |
 | `delete_path` | Permanently delete a file or directory | Yes |
 | `run_command` | Run a shell command (bash/cmd) | Yes |
 | `fetch_url` | Fetch a web page or API endpoint | Yes |
 | `list_skills` / `load_skill` | Discover and follow skill playbooks | No |
 | `set_plan` | Maintain the live task plan board | No |
 
-Every risky action shows a confirmation prompt — `y` allows, `n`/`Esc` denies.
+Every risky action shows a confirmation prompt - `y` allows, `n`/`Esc` denies.
 Edits preview a **colorized unified diff** before you approve. Paths accept
 relative, absolute, and `~/…` forms; writing outside the project is allowed
 but always confirmed. The last exchange's changes can be reverted with
@@ -240,18 +240,18 @@ what does this error screen show? @error.png
 ```
 
 - Typing `@` opens a **live path autocomplete** (debounced, cached); Tab completes step by step through folders
-- Only tokens resolving to existing files attach — stray `@mentions` are ignored
+- Only tokens resolving to existing files attach - stray `@mentions` are ignored
 - Text files travel as fenced code blocks (60k char cap each); the chat display stays short
-- Images (`.png` `.jpg` `.jpeg` `.gif` `.webp`) are sent as real vision parts, base64 inline, 4 MB cap each — needs a vision-capable model via `/model`
+- Images (`.png` `.jpg` `.jpeg` `.gif` `.webp`) are sent as real vision parts, base64 inline, 4 MB cap each - needs a vision-capable model via `/model`
 
 ## Project instructions (`BAJAJBOT.md`)
 
-Teach bajajbot your project's rules once — it applies them to every reply:
+Teach bajajbot your project's rules once - it applies them to every reply:
 
 ```markdown
 # BAJAJBOT.md
 - Package manager: pnpm only, never npm
-- Never edit /legacy — generated code
+- Never edit /legacy - generated code
 - Run `pnpm lint` after any edit
 - Commit style: conventional commits
 ```
@@ -264,8 +264,8 @@ picked up. 8k character budget, truncated safely.
 
 ## Persistent memory
 
-The agent remembers across sessions. When it learns something durable — your
-editor preference, the deploy target, "tests always run with vitest" — it
+The agent remembers across sessions. When it learns something durable - your
+editor preference, the deploy target, "tests always run with vitest" - it
 saves a fact with its `memory` tool, and every future session starts with
 those facts already in context. Facts live in `~/.bajajbot/memory.md`
 (200-fact cap, newest win, duplicates ignored). Browse what it knows with
@@ -300,13 +300,13 @@ browse everything installed and run one immediately.
 ## Git checkpoints & session changes
 
 After **every reply** BajajBot snapshots the whole working tree to the hidden
-ref `refs/bajajbot/checkpoints` using git plumbing only (a temporary index) —
+ref `refs/bajajbot/checkpoints` using git plumbing only (a temporary index) -
 your branch, staging area, stash and commit history are never touched. Works
 even in repos with zero commits; silently skips non-git directories.
 
 - `/checkpoints` lists snapshots newest-first with your prompt as the label; restoring overwrites files with their snapshot contents (files created *after* the snapshot are left alone)
 - `/changes` diffs the first vs latest snapshot to list exactly what the agent did this session
-- Snapshots are a rolling window: once `checkpointLimit` (default 300) is reached, the chain restarts and git's garbage collection reclaims the oldest ones — no unbounded growth
+- Snapshots are a rolling window: once `checkpointLimit` (default 300) is reached, the chain restarts and git's garbage collection reclaims the oldest ones - no unbounded growth
 
 ## Usage tracking & cost guardrails
 
@@ -319,20 +319,20 @@ even in repos with zero commits; silently skips non-git directories.
 The status bar shows how full the model's context budget is: dim normally,
 yellow at ≥70%, red at ≥90%. Past the budget (`config set contextTokens`,
 default 12000), older turns are AI-summarized into a single bridge message and
-the conversation continues seamlessly — you'll see `✓ Compacted N older
+the conversation continues seamlessly - you'll see `✓ Compacted N older
 message(s)`.
 
 ## Rate limits & errors
 
 Free models throttle fast. On 429/5xx BajajBot retries automatically (backoff
 + provider `Retry-After`, up to 3 tries, abortable with Esc) and shows
-`⚠ rate limited — retrying in 5s (attempt 1/3)` in the status bar. Errors come
+`⚠ rate limited - retrying in 5s (attempt 1/3)` in the status bar. Errors come
 back in plain English: bad key → "run `bajajbot config init`", out of credit
 (402), unknown model (404), etc.
 
 ## Copying messages
 
-- **Drag with the left mouse button** over chat text — highlights while dragging, copies on release (OSC 52, works over SSH; falls back to `pbcopy`/`wl-copy`/`xclip`/`clip`)
+- **Drag with the left mouse button** over chat text - highlights while dragging, copies on release (OSC 52, works over SSH; falls back to `pbcopy`/`wl-copy`/`xclip`/`clip`)
 - `/copy` copies the last assistant reply without touching the mouse
 - Hold **Shift** while dragging for your terminal's native selection
 
@@ -362,11 +362,11 @@ Nothing is synced anywhere; messages go only to the endpoint you configure.
 
 ## Troubleshooting
 
-- **"API key rejected (401)"** — run `bajajbot config init` and paste a fresh key
-- **Rate limited constantly** — free models allow only a few requests per minute/day; wait or switch models with `/model`
-- **Config corrupted** (e.g. stray characters edited into `config.json`) — BajajBot tells you the exact fix: repair the file or delete it and re-run `bajajbot config init`
-- **Image mention fails** — switch to a vision-capable model with `/model`
-- **Checkpoints empty** — they need a git project and at least two replies
+- **"API key rejected (401)"** - run `bajajbot config init` and paste a fresh key
+- **Rate limited constantly** - free models allow only a few requests per minute/day; wait or switch models with `/model`
+- **Config corrupted** (e.g. stray characters edited into `config.json`) - BajajBot tells you the exact fix: repair the file or delete it and re-run `bajajbot config init`
+- **Image mention fails** - switch to a vision-capable model with `/model`
+- **Checkpoints empty** - they need a git project and at least two replies
 
 ## Upgrading
 
@@ -433,4 +433,4 @@ Choose and add a license before publishing.
 
 ## Author
 
-Sahil Bajaj — [Sahilbajaj2004@gmail.com](mailto:Sahilbajaj2004@gmail.com)
+Sahil Bajaj - [Sahilbajaj2004@gmail.com](mailto:Sahilbajaj2004@gmail.com)

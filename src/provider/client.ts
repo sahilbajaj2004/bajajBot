@@ -49,7 +49,7 @@ export function friendlyApiError(status: number, body: string): string {
     const parsed = JSON.parse(body) as { error?: { message?: unknown } };
     if (typeof parsed.error?.message === "string") detail = parsed.error.message.slice(0, 300);
   } catch {
-    // body was not JSON — keep the raw text
+    // body was not JSON - keep the raw text
   }
   switch (status) {
     case 401:
@@ -60,7 +60,7 @@ export function friendlyApiError(status: number, body: string): string {
     case 404:
       return `Model or endpoint not found (404). Check the model ID with /model. ${detail}`;
     case 429:
-      return `Rate limited by the provider (429). Free models allow only a few requests per minute/day — wait, or switch models with /model. ${detail}`;
+      return `Rate limited by the provider (429). Free models allow only a few requests per minute/day - wait, or switch models with /model. ${detail}`;
     case 408:
     case 500:
     case 502:
@@ -103,7 +103,7 @@ async function requestChatCompletions(
     } catch (cause) {
       if (isAbortError(cause)) throw cause;
       throw fail(
-        `Could not reach ${normalizeBaseUrl(config.baseUrl)} — check your connection. (${cause instanceof Error ? cause.message : String(cause)})`,
+        `Could not reach ${normalizeBaseUrl(config.baseUrl)} - check your connection. (${cause instanceof Error ? cause.message : String(cause)})`,
         true,
       );
     }
@@ -121,7 +121,7 @@ async function requestChatCompletions(
         : delays[attempt];
     const reason = response.status === 429 ? "rate limited" : `provider error ${response.status}`;
     options.onStatus?.(
-      `⚠ ${reason} — retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt + 1}/${delays.length})`,
+      `⚠ ${reason} - retrying in ${Math.round(delayMs / 1000)}s (attempt ${attempt + 1}/${delays.length})`,
     );
     await sleep(delayMs, options.signal);
   }

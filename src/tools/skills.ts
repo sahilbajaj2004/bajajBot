@@ -9,7 +9,7 @@ const SKILL_DIR = ".bajajbot/skills";
 export type SkillOrigin = string;
 
 export interface Skill {
-  /** File or folder name — used as the load_skill argument. */
+  /** File or folder name - used as the load_skill argument. */
   name: string;
   description: string;
   path: string;
@@ -88,8 +88,8 @@ export function listSkillsFrom(sources: SkillSource[]): Skill[] {
 
 /**
  * Every place skills can live: the project's .bajajbot/skills (wins), then
- * native and third-party global locations — ~/.bajajbot, ~/.claude,
- * ~/.agents and ~/.codex — so playbooks installed for other coding agents
+ * native and third-party global locations - ~/.bajajbot, ~/.claude,
+ * ~/.agents and ~/.codex - so playbooks installed for other coding agents
  * work here too.
  */
 export function listSkills(cwd: string): Skill[] {

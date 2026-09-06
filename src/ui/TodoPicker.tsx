@@ -90,7 +90,7 @@ export function TodoPicker({
     <Overlay title={`Todos · ${open} open of ${items.length}`}>
       {mode === "list" ? (
         items.length === 0 ? (
-          <Text dimColor>{"  No todos for this project yet — press a to add one."}</Text>
+          <Text dimColor>{"  No todos for this project yet - press a to add one."}</Text>
         ) : rows.length === 0 ? (
           <Text dimColor>{`  No todos match "${query}".`}</Text>
         ) : (
@@ -107,7 +107,7 @@ export function TodoPicker({
       ) : (
         <>
           <Text bold color={theme.accent}>{`  › ${text}${text ? "" : "█"}`}</Text>
-          <Text dimColor>  Type a task — ↵ adds it · esc back.</Text>
+          <Text dimColor>  Type a task - ↵ adds it · esc back.</Text>
         </>
       )}
       <Text> </Text>

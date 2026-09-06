@@ -34,13 +34,13 @@ export function isGitRepo(cwd: string): boolean {
 
 /**
  * Snapshot the whole working tree into a hidden commit on
- * refs/bajajbot/checkpoints using plumbing only — the user's index, branch,
+ * refs/bajajbot/checkpoints using plumbing only - the user's index, branch,
  * stash and history are untouched. Async so the chat UI never blocks on git;
  * returns the new sha or null when skipped (not a repo, git failed, or a
  * previous snapshot is still running).
  *
  * Retention: a git ref can only keep "newest N" commits by reachability, and
- * every snapshot links its predecessor — so once the chain holds `limit`
+ * every snapshot links its predecessor - so once the chain holds `limit`
  * snapshots (default 300) the next one starts a fresh parent-less root and
  * the old chain becomes unreachable (git GC reclaims it). Checkpoints are a
  * rolling safety net; the newest state is always intact.

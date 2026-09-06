@@ -27,7 +27,7 @@ export function UsagePanel({ totals }: { totals: UsageTotals }) {
       <Row label="reply tokens" value={fmtTokens(totals.completionTokens)} />
       <Row
         label="est. cost"
-        value={totals.costUsd > 0 ? `$${totals.costUsd.toFixed(4)}` : hasUsage ? "$0 (free models)" : "—"}
+        value={totals.costUsd > 0 ? `$${totals.costUsd.toFixed(4)}` : hasUsage ? "$0 (free models)" : "-"}
       />
       {totals.byModel.length > 0 ? (
         <>
@@ -51,7 +51,7 @@ export function UsagePanel({ totals }: { totals: UsageTotals }) {
       {!hasUsage ? (
         <Text> </Text>
       ) : null}
-      <Text dimColor>{hasUsage ? "" : "  No usage recorded yet — totals build up as you chat."}</Text>
+      <Text dimColor>{hasUsage ? "" : "  No usage recorded yet - totals build up as you chat."}</Text>
       <Box marginTop={1}>
         <Text color={theme.accent}>{"  esc close"}</Text>
       </Box>

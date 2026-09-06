@@ -9,7 +9,7 @@ test("renderMarkdown caches repeated parses and still renders content", () => {
   const second = renderMarkdown(content, 80);
   assert.equal(first, second);
   assert.ok(first.includes("Heading"));
-  // different width means a different cache entry — both valid renders
+  // different width means a different cache entry - both valid renders
   const narrow = renderMarkdown(content, 40);
   assert.ok(narrow.length > 0);
 });

@@ -30,7 +30,7 @@ export function unifiedDiff(oldText: string, newText: string): string {
     const midA = a.slice(start, endA);
     const midB = b.slice(start, endB);
     if (midA.length > MAX_MIDDLE_LINES || midB.length > MAX_MIDDLE_LINES) {
-      return `(files too large to preview — ${midA.length} → ${midB.length} lines in changed region)`;
+      return `(files too large to preview - ${midA.length} → ${midB.length} lines in changed region)`;
     }
     a = a.slice(Math.max(0, start - CONTEXT_LINES), Math.min(a.length, endA + CONTEXT_LINES));
     b = b.slice(Math.max(0, start - CONTEXT_LINES), Math.min(b.length, endB + CONTEXT_LINES));

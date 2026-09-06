@@ -13,7 +13,7 @@ export function MemoryOverlay({ facts, onClose }: { facts: string[]; onClose: ()
   return (
     <Overlay title="Persistent memory">
       {facts.length === 0 ? (
-        <Text dimColor>{" Memory is empty — the agent saves durable facts here as it learns your setup."}</Text>
+        <Text dimColor>{" Memory is empty - the agent saves durable facts here as it learns your setup."}</Text>
       ) : (
         visible.map((fact, index) => (
           <Text key={`${start + index}-${fact.slice(0, 12)}`}>

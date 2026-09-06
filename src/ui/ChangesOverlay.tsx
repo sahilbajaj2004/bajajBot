@@ -33,7 +33,7 @@ export function ChangesOverlay({
   return (
     <Overlay title="Session changes">
       {files.length === 0 ? (
-        <Text dimColor>{" No file changes recorded — checkpoints need a git project and at least two replies."}</Text>
+        <Text dimColor>{" No file changes recorded - checkpoints need a git project and at least two replies."}</Text>
       ) : (
         visible.map((file) => (
           <Text key={`${file.status}-${file.path}`}>

@@ -37,7 +37,7 @@ export function compactionCut(messages: Message[], keepRecent = KEEP_RECENT_MESS
 /**
  * When the conversation exceeds the configured context budget, replace every
  * message before a safe cut with a single AI-written summary message. Returns
- * null when under budget, no safe cut exists, or summarization fails — the
+ * null when under budget, no safe cut exists, or summarization fails - the
  * caller keeps the full history in those cases.
  */
 export async function compactMessages(
@@ -76,7 +76,7 @@ export async function compactMessages(
 
   const bridge: Message = {
     role: "user",
-    content: `[Earlier conversation summarized to save context]\n${summary}\n[Summary end — the conversation continues below]`,
+    content: `[Earlier conversation summarized to save context]\n${summary}\n[Summary end - the conversation continues below]`,
     timestamp: new Date().toISOString(),
   };
   return { messages: [bridge, ...recent], removed: old.length };

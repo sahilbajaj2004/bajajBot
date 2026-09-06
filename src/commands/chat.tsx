@@ -21,7 +21,7 @@ export async function startChat(session?: Session, initialPrompt?: string, versi
   applyTheme(config.theme);
   if (version) {
     void checkForUpdate(version).then((latest) => {
-      if (latest) console.log(`⬆ bajajbot v${latest} available — npm install -g bajajbot@latest`);
+      if (latest) console.log(`⬆ bajajbot v${latest} available - npm install -g bajajbot@latest`);
     });
   }
   const mouse = createMouseStdin(process.stdin as NodeJS.ReadStream & { isTTY?: boolean });

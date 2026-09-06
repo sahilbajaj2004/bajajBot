@@ -40,7 +40,7 @@ export function CommandPalette({
   });
 
   return (
-    <Overlay title="Command palette — find and run a command">
+    <Overlay title="Command palette - find and run a command">
       <Text bold color={theme.accent}>{`  › /${query}█`}</Text>
       {filtered.length === 0 ? (
         <Text dimColor>{`  No command matches "${query}".`}</Text>

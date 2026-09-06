@@ -42,7 +42,7 @@ export function StatusBar({
   cost?: number | null;
   /** Estimated share of the context budget in use (0-100+). */
   contextPercent?: number;
-  /** Open session id — rendered as a "#fc68"-style badge. */
+  /** Open session id - rendered as a "#fc68"-style badge. */
   sessionId?: string;
   /** Auto-derived conversation title (shown on wide terminals). */
   sessionTitle?: string;

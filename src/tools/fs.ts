@@ -59,7 +59,7 @@ export const readFile: ToolDef = {
   risky: false,
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "File path — relative to the project, absolute, or ~/…" } },
+    properties: { path: { type: "string", description: "File path - relative to the project, absolute, or ~/…" } },
     required: ["path"],
   },
   summary: (args) => args.path ?? "",
@@ -78,7 +78,7 @@ export const listDir: ToolDef = {
   risky: false,
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "Directory path — relative to the project, absolute, or ~/…" } },
+    properties: { path: { type: "string", description: "Directory path - relative to the project, absolute, or ~/…" } },
   },
   summary: (args) => args.path || ".",
   execute: (args, ctx) => {
@@ -99,7 +99,7 @@ export const writeFile: ToolDef = {
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "File path — relative to the project, absolute, or ~/…" },
+      path: { type: "string", description: "File path - relative to the project, absolute, or ~/…" },
       content: { type: "string", description: "Full file content to write" },
     },
     required: ["path", "content"],
@@ -133,7 +133,7 @@ export const editFile: ToolDef = {
   parameters: {
     type: "object",
     properties: {
-      path: { type: "string", description: "File path — relative to the project, absolute, or ~/…" },
+      path: { type: "string", description: "File path - relative to the project, absolute, or ~/…" },
       find: { type: "string", description: "Exact existing text to replace" },
       replace: { type: "string", description: "Replacement text" },
     },
@@ -148,7 +148,7 @@ export const editFile: ToolDef = {
       const replace = typeof args.replace === "string" ? args.replace : "";
       return unifiedDiff(original, original.split(find).join(replace)) || "(no changes)";
     } catch {
-      return "(diff preview unavailable — the find string may be missing or ambiguous)";
+      return "(diff preview unavailable - the find string may be missing or ambiguous)";
     }
   },
   execute: (args, ctx) => {
@@ -171,7 +171,7 @@ export const deletePath: ToolDef = {
   risky: true,
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "Path — relative to the project, absolute, or ~/…" } },
+    properties: { path: { type: "string", description: "Path - relative to the project, absolute, or ~/…" } },
     required: ["path"],
   },
   summary: (args) => String(args.path ?? ""),

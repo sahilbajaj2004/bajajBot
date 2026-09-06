@@ -53,7 +53,7 @@ program
     if (options.continue && !options.print) {
       const [latest] = listSessions();
       if (!latest) {
-        console.error("bajajbot: no saved sessions yet — starting a new chat.");
+        console.error("bajajbot: no saved sessions yet - starting a new chat.");
         return startChat(undefined, prompt || undefined);
       }
       return startChat(loadSession(latest.id), prompt || undefined, packageVersion());

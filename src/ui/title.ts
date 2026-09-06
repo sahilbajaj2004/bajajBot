@@ -11,7 +11,7 @@ export function setTerminalTitle(title: string): void {
 
 export function sessionTitle(firstPrompt?: string): string {
   const name = firstPrompt ? clean(firstPrompt).slice(0, 60) : "";
-  return name ? `BajajBot — ${name}` : "BajajBot";
+  return name ? `BajajBot - ${name}` : "BajajBot";
 }
 
 /** Short session label from the first real user message (skips compaction bridges). */

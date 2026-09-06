@@ -73,7 +73,7 @@ export function createMouseStdin(
   let buffer = Buffer.alloc(0);
   let escTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // A lone ESC with nothing following it is the Escape key, not a sequence —
+  // A lone ESC with nothing following it is the Escape key, not a sequence -
   // flush it after a short wait so Esc presses reach ink immediately.
   const flushLoneEsc = (): void => {
     escTimer = undefined;

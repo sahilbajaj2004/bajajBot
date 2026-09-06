@@ -1,21 +1,21 @@
-# Terminal AI Chatbot — Build Spec
+# Terminal AI Chatbot - Build Spec
 
 ## 1. What we're building
 
-A terminal-based AI chatbot distributed as an npm package (`npx bajajbot chat`). It is a **pure chat client** — no file editing, no shell command execution, no agentic tool use. Just a fast, good-looking terminal chat interface against any OpenAI-compatible LLM API.
+A terminal-based AI chatbot distributed as an npm package (`npx bajajbot chat`). It is a **pure chat client** - no file editing, no shell command execution, no agentic tool use. Just a fast, good-looking terminal chat interface against any OpenAI-compatible LLM API.
 
 ### Core capabilities
-- Provider/model selectable at runtime — primarily OpenRouter (single API, many models), plus support for a custom self-hosted OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, etc.)
-- Rich terminal UI built with Ink (React for terminals) — message list, input box, status bar showing active model
-- Live token streaming — replies render as they're generated, not dumped at the end
-- Persistent sessions — every conversation saved to disk, resumable later
-- Config-driven — API key, provider, base URL, default model stored in `~/.bajajbot/config.json`, set via a CLI command, editable anytime
+- Provider/model selectable at runtime - primarily OpenRouter (single API, many models), plus support for a custom self-hosted OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, etc.)
+- Rich terminal UI built with Ink (React for terminals) - message list, input box, status bar showing active model
+- Live token streaming - replies render as they're generated, not dumped at the end
+- Persistent sessions - every conversation saved to disk, resumable later
+- Config-driven - API key, provider, base URL, default model stored in `~/.bajajbot/config.json`, set via a CLI command, editable anytime
 
 ### Explicit non-goals (do not build these)
 - No shell command execution
 - No file read/write on the user's project directory
 - No agentic tool-use loop (that's a separate future project, not this one)
-- No GUI, no Electron — terminal only
+- No GUI, no Electron - terminal only
 
 ---
 
@@ -44,8 +44,8 @@ bajajbot/
       store.ts              # read/write ~/.bajajbot/config.json
       types.ts              # Config interface
     provider/
-      client.ts             # streamChat() — OpenAI-compatible streaming client
-      models.ts             # fetchModels() — GET OpenRouter model list
+      client.ts             # streamChat() - OpenAI-compatible streaming client
+      models.ts             # fetchModels() - GET OpenRouter model list
     session/
       history.ts            # save/load/list session JSON files
       types.ts               # Session, Message interfaces
@@ -57,7 +57,7 @@ bajajbot/
       ModelPicker.tsx          # Ink list component for `bajajbot models`
       SessionPicker.tsx        # Ink list component for `bajajbot sessions`
     commands/
-      chat.ts                # `bajajbot chat` — boots Ink app
+      chat.ts                # `bajajbot chat` - boots Ink app
       configCmd.ts             # `bajajbot config init|set-model|show`
       sessionsCmd.ts            # `bajajbot sessions list|resume <id>`
       modelsCmd.ts               # `bajajbot models`
@@ -103,7 +103,7 @@ interface Session {
 
 ### 5.1 `config/store.ts`
 ```typescript
-function loadConfig(): Config;              // throws if config missing — caller should tell user to run `config init`
+function loadConfig(): Config;              // throws if config missing - caller should tell user to run `config init`
 function saveConfig(config: Config): void;
 function configExists(): boolean;
 ```
@@ -115,7 +115,7 @@ async function* streamChat(config: Config, messages: Message[]): AsyncGenerator<
 ```
 - POSTs to `${config.baseUrl}/chat/completions` with `Authorization: Bearer ${apiKey}`, `stream: true`
 - Manually parses SSE: split on newlines, look for `data: ` prefix, `[DONE]` sentinel ends the stream, otherwise `JSON.parse` and yield `choices[0].delta.content`
-- Must handle partial chunks (buffer incomplete lines across reads — see reference implementation below)
+- Must handle partial chunks (buffer incomplete lines across reads - see reference implementation below)
 - On non-200 response, throw an error with status + body text so the UI can show a real error, not a silent hang
 
 Reference implementation (agent should adapt, not necessarily copy verbatim):
@@ -159,7 +159,7 @@ export async function* streamChat(config: Config, messages: Message[]) {
 interface ModelInfo { id: string; name: string; contextLength: number; }
 async function fetchModels(baseUrl: string): Promise<ModelInfo[]>;
 ```
-`GET ${baseUrl}/models` — no auth required for OpenRouter's public model list.
+`GET ${baseUrl}/models` - no auth required for OpenRouter's public model list.
 
 ### 5.4 `session/history.ts`
 ```typescript
@@ -168,15 +168,15 @@ function loadSession(id: string): Session;
 function listSessions(): { id: string; createdAt: string; preview: string }[]; // preview = first ~60 chars of first user message
 function createSession(model: string): Session; // generates id, empty messages
 ```
-Save after **every completed assistant reply**, not just on exit — protects against crash mid-session.
+Save after **every completed assistant reply**, not just on exit - protects against crash mid-session.
 
 ### 5.5 `ui/App.tsx`
-Owns: `messages` state, `streamingReply` state (buffer, not per-token — see streaming note below), `input` state.
+Owns: `messages` state, `streamingReply` state (buffer, not per-token - see streaming note below), `input` state.
 
 Flow on submit:
 1. Append user message to state
 2. Call `streamChat`, accumulate tokens into a local buffer
-3. Flush buffer to `streamingReply` state on an interval (~50ms), not on every yielded token — per-token `setState` in Ink causes visible flicker/dropped frames
+3. Flush buffer to `streamingReply` state on an interval (~50ms), not on every yielded token - per-token `setState` in Ink causes visible flicker/dropped frames
 4. On stream end, append final assistant message to `messages`, clear `streamingReply`, call `saveSession`
 
 ### 5.6 CLI commands (`commander`)
@@ -192,12 +192,12 @@ bajajbot sessions                 # list sessions, Ink picker → resume selecte
 
 ---
 
-## 6. Build order (do not parallelize — each phase validates the previous)
+## 6. Build order (do not parallelize - each phase validates the previous)
 
-1. **Config layer** — `config/store.ts` + `config init` command as plain readline prompts (no Ink yet). Verify `~/.bajajbot/config.json` round-trips correctly.
-2. **Provider client, standalone** — write `streamChat`, test from a bare script that just `console.log`s each yielded token against a real OpenRouter key. Confirm streaming actually works before touching UI.
-3. **Basic Ink app, no streaming** — send full (non-streamed) requests, render request/response. Get component structure and layout right first.
-4. **Wire streaming into Ink** — only after 2 and 3 both independently work. If output looks garbled, bisect: log raw tokens to a file to check if the bug is in the client or in the Ink re-render/buffering.
+1. **Config layer** - `config/store.ts` + `config init` command as plain readline prompts (no Ink yet). Verify `~/.bajajbot/config.json` round-trips correctly.
+2. **Provider client, standalone** - write `streamChat`, test from a bare script that just `console.log`s each yielded token against a real OpenRouter key. Confirm streaming actually works before touching UI.
+3. **Basic Ink app, no streaming** - send full (non-streamed) requests, render request/response. Get component structure and layout right first.
+4. **Wire streaming into Ink** - only after 2 and 3 both independently work. If output looks garbled, bisect: log raw tokens to a file to check if the bug is in the client or in the Ink re-render/buffering.
 5. **Session persistence + resume command.**
 6. **Model picker + config commands polish.**
 

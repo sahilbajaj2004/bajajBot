@@ -11,11 +11,11 @@ const plex = IBM_Plex_Mono({
 
 export const metadata = {
   metadataBase: new URL("https://bajajbot.dev"),
-  title: "BajajBot — your AI coding agent, in your terminal",
+  title: "BajajBot - your AI coding agent, in your terminal",
   description:
     "A terminal AI coding assistant for any OpenAI-compatible model. Bring your own API key, pick a model, and let BajajBot read, write, edit and run code in your project. npx bajajbot.",
   openGraph: {
-    title: "BajajBot — your AI coding agent, in your terminal",
+    title: "BajajBot - your AI coding agent, in your terminal",
     description:
       "A terminal AI coding assistant for any OpenAI-compatible model. npx bajajbot.",
     type: "website",

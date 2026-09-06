@@ -28,7 +28,7 @@ test("checkForUpdate reports newer versions and respects the 24h marker", async 
 
   assert.equal(await checkForUpdate("1.1.0", opts), "9.9.9");
 
-  // marker was written — a second call within 24h must not hit the network
+  // marker was written - a second call within 24h must not hit the network
   let calls = 0;
   globalThis.fetch = (async () => {
     calls++;

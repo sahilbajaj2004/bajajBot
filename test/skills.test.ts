@@ -21,7 +21,7 @@ writeFileSync(
 );
 writeFileSync(
   join(otherSkills, "deploy.md"),
-  "# Deploy\n\nWRONG copy — must be overridden by the project skill.\n",
+  "# Deploy\n\nWRONG copy - must be overridden by the project skill.\n",
 );
 writeFileSync(
   join(projectSkills, "review.md"),

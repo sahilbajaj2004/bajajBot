@@ -34,7 +34,7 @@ export function extractAttachments(content: string, cwd: string): { texts: strin
         else texts.push(token);
       }
     } catch {
-      // not a file — leave the token alone (e.g. an @mention)
+      // not a file - leave the token alone (e.g. an @mention)
     }
   }
   return { texts, images };

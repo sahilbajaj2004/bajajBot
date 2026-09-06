@@ -20,7 +20,7 @@ export function isNewerVersion(current: string, latest: string): boolean {
 }
 
 /**
- * Ask npm whether a newer bajajbot exists — at most once every 24h, and only
+ * Ask npm whether a newer bajajbot exists - at most once every 24h, and only
  * when online. Returns the newer version string, or null (up to date,
  * offline, checked recently, or any failure). Never throws.
  */

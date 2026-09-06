@@ -58,7 +58,7 @@ test("streamChat retries 429s and succeeds on a later attempt", async () => {
   }
   assert.equal(tokens.join(""), "ok");
   assert.equal(calls, 3);
-  assert.match(notes[0], /rate limited — retrying in 0s \(attempt 1\/2\)/);
+  assert.match(notes[0], /rate limited - retrying in 0s \(attempt 1\/2\)/);
 });
 
 test("streamChat gives up after exhausting retries with a friendly message", async () => {

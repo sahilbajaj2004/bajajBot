@@ -93,7 +93,7 @@ export function FallbackPicker({
   return (
     <Overlay title={`Fallback chain · ${chainCount} model${chainCount === 1 ? "" : "s"}`}>
       {chain.length === 0 ? (
-        <Text dimColor>{"  Chain is empty — pick models/profiles below to add."}</Text>
+        <Text dimColor>{"  Chain is empty - pick models/profiles below to add."}</Text>
       ) : (
         <Text dimColor>{`  ${chain.map((row) => entryLabel(row.id)).join(" → ")}`}</Text>
       )}

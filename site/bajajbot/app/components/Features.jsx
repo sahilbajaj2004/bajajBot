@@ -29,7 +29,7 @@ const FEATURES = [
   {
     cmd: "automation.schedule",
     title: "Cron prompts that run while you're away",
-    body: "/schedule registers 5-field cron expressions that fire headless turns into their own sessions — standups, digests, reminders. Add, remove, list, or /schedule run one now.",
+    body: "/schedule registers 5-field cron expressions that fire headless turns into their own sessions - standups, digests, reminders. Add, remove, list, or /schedule run one now.",
   },
   {
     cmd: "ui.palette",

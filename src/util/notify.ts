@@ -28,7 +28,7 @@ export function notificationSequences(title: string, body: string): string {
 export function notifyTurnDone(ok: boolean, preview: string): void {
   if (!process.stdout.isTTY) return;
   const body = ok
-    ? `Reply ready — ${preview || "done"}`
-    : `Turn failed — ${preview || "check the chat"}`;
+    ? `Reply ready - ${preview || "done"}`
+    : `Turn failed - ${preview || "check the chat"}`;
   process.stdout.write(notificationSequences("bajajbot", body));
 }

@@ -118,7 +118,7 @@ export function SnippetPicker({
     <Overlay title={`Prompt snippets · ${snippets.length}`}>
       {mode === "list" ? (
         snippets.length === 0 ? (
-          <Text dimColor>{"  No snippets yet — press a to add one, or send a prompt then type /sn save <name>."}</Text>
+          <Text dimColor>{"  No snippets yet - press a to add one, or send a prompt then type /sn save <name>."}</Text>
         ) : listRows.length === 1 ? (
           <Text dimColor>{`  No snippet matches "${query}".`}</Text>
         ) : (
@@ -135,14 +135,14 @@ export function SnippetPicker({
       {mode === "name" ? (
         <>
           <Text bold color={theme.accent}>{`  › ${name}${name ? "" : "█"}`}</Text>
-          <Text dimColor>  Name for the snippet — ↵ to type the text.</Text>
+          <Text dimColor>  Name for the snippet - ↵ to type the text.</Text>
         </>
       ) : null}
       {mode === "text" ? (
         <>
           <Text dimColor>{`  ${name}:`}</Text>
           <Text bold color={theme.accent}>{`  › ${text}${text ? "" : "█"}`}</Text>
-          <Text dimColor>  Type the template (\n = newline) — ↵ saves it.</Text>
+          <Text dimColor>  Type the template (\n = newline) - ↵ saves it.</Text>
         </>
       ) : null}
       <Text> </Text>

@@ -8,7 +8,7 @@ import { BOT_START, LOGO_BOTTOM, LOGO_TOP } from "./logo.js";
 
 const FEATURES: Array<[string, string]> = [
   ["streaming", "replies appear live, rendered as markdown"],
-  ["/model", "pick any model — even unlisted ones"],
+  ["/model", "pick any model - even unlisted ones"],
   ["/compare", "ask two models, keep the better answer"],
   ["/btw", "instant side question, never enters the chat"],
   ["/retry · /undo", "regenerate or remove the last exchange"],
@@ -18,27 +18,27 @@ const FEATURES: Array<[string, string]> = [
 
 const TIPS = [
   "Use /export to save the conversation as Markdown (or JSON)",
-  "Use @src/app.ts to attach files — the model reads them automatically",
+  "Use @src/app.ts to attach files - the model reads them automatically",
   "Type /btw to ask a quick side question without breaking the current task",
-  "Everything stays local in ~/.bajajbot — no data leaves your machine",
+  "Everything stays local in ~/.bajajbot - no data leaves your machine",
   "Type /compare to pit two models against each other and keep the winner",
   "Type /subagent to fan out parallel research agents while you keep chatting",
   "Type /fallback to pick an auto-failover model chain for rate-limited turns",
-  "Type /commit to have the AI draft a git commit message — press y to commit",
-  "Type /route to auto-pick the model per message — e.g. big model for long rewrites",
+  "Type /commit to have the AI draft a git commit message - press y to commit",
+  "Type /route to auto-pick the model per message - e.g. big model for long rewrites",
   "Type /sn to browse saved prompt snippets, or /sn save name to store your last prompt",
-  "Type /todo to keep a per-project to-do list — the agent ticks items off as it works",
+  "Type /todo to keep a per-project to-do list - the agent ticks items off as it works",
   "Type /ollama to auto-detect your local Ollama server and switch to it",
-  "Hit ctrl+k for the command palette — search and run any command instantly",
+  "Hit ctrl+k for the command palette - search and run any command instantly",
   "Type /map to see the same project map the agent reads from",
-  "Type /branch to fork this chat — explore an alternative without losing your place",
-  "The agent searches the web itself — just ask about something current",
+  "Type /branch to fork this chat - explore an alternative without losing your place",
+  "The agent searches the web itself - just ask about something current",
   "press esc twice to interrupt a running turn (accidental-safe)",
   "Type /retry to regenerate a reply, /undo to remove the last exchange",
   "Type /usage to see tokens and cost across all your chats",
   "Schedule recurring prompts with /schedule add <name> \"<cron>\" \"<prompt>\"",
   "Switch looks with /theme, resume chats with /sessions",
-  "Drag over text to copy it — works over SSH too",
+  "Drag over text to copy it - works over SSH too",
   "Type /checkpoints to restore any file from a git snapshot",
   "Type /skills to browse playbooks and run one instantly",
 ];
@@ -87,7 +87,7 @@ export function Splash({
       <Text>
         <Text color={theme.accent}>⚡ </Text>
         <Text bold>bajajbot</Text>
-        {wide ? <Text dimColor> — terminal AI chat</Text> : null}
+        {wide ? <Text dimColor> - terminal AI chat</Text> : null}
       </Text>
       {!suggestions.length ? (
         <Box marginTop={1} flexDirection="column">

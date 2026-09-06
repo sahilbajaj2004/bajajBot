@@ -6,9 +6,9 @@ test("notificationSequences builds OSC 9 + 777 with BEL and sanitizes input", ()
   const originalTmux = process.env.TMUX;
   try {
     delete process.env.TMUX;
-    const seq = notificationSequences("bajajbot", "Reply ready — fix the bug");
-    assert.match(seq, /\x1b\]777;notify;bajajbot;Reply ready — fix the bug\x07/);
-    assert.match(seq, /\x1b\]9;Reply ready — fix the bug\x07/);
+    const seq = notificationSequences("bajajbot", "Reply ready - fix the bug");
+    assert.match(seq, /\x1b\]777;notify;bajajbot;Reply ready - fix the bug\x07/);
+    assert.match(seq, /\x1b\]9;Reply ready - fix the bug\x07/);
     assert.ok(seq.endsWith("\x07"));
     assert.ok(!seq.includes("\x1bPtmux"));
 

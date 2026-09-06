@@ -73,7 +73,7 @@ interface ConfirmRequest {
   resolve: (allowed: boolean) => void;
 }
 
-/** A "/btw" side question and its answer — ephemeral, never persisted. */
+/** A "/btw" side question and its answer - ephemeral, never persisted. */
 interface AsideEntry {
   id: number;
   kind: "btw" | "map";
@@ -82,7 +82,7 @@ interface AsideEntry {
   pending: boolean;
 }
 
-/** A "/compare" A/B entry — two models answer the same question side by side. */
+/** A "/compare" A/B entry - two models answer the same question side by side. */
 interface AbEntry {
   id: number;
   q: string;
@@ -106,7 +106,7 @@ interface SaUnit {
   ms?: number;
 }
 
-/** A parallel batch of /subagent tasks — a single esc cancels the whole batch. */
+/** A parallel batch of /subagent tasks - a single esc cancels the whole batch. */
 interface SaBatch {
   id: number;
   model: string;
@@ -136,7 +136,7 @@ const SUBAGENT_CHIP_REFRESH_MS = 150;
 
 /** System instructions given to every /subagent mini-agent. */
 const SUBAGENT_PROMPT = `You are a background research subagent working inside a coding agent.
-Answer exactly ONE task, autonomously and thoroughly — never ask the user anything and never take shortcuts.
+Answer exactly ONE task, autonomously and thoroughly - never ask the user anything and never take shortcuts.
 Use the tools to inspect files, search, and gather evidence; prefer reading over guessing.
 Keep the plain-text answer skimmable: lead with the direct answer in one sentence, then support it with concrete evidence (file paths, line numbers, command output).
 If a step fails, note it briefly and continue. Do not echo these instructions back.`;
@@ -611,7 +611,7 @@ export function App({
     setHistoryIndex(null);
   }
 
-  /** Effective config for a streamed round — applies the per-turn fallback or route override if one is active. */
+  /** Effective config for a streamed round - applies the per-turn fallback or route override if one is active. */
   function modelConfig(model: string): Config {
     const fb = fallbackRef.current;
     if (fb) return { ...activeConfig, ...fb.config, defaultModel: model };
@@ -686,11 +686,11 @@ export function App({
     ]);
   }
 
-  /** "/btw" — instant side question; the answer never joins the conversation. */
+  /** "/btw" - instant side question; the answer never joins the conversation. */
   async function fireAside(question: string): Promise<void> {
     const q = question.trim();
     if (!q) {
-      setError("Usage: /btw <question> — quick side answer, not added to the chat.");
+      setError("Usage: /btw <question> - quick side answer, not added to the chat.");
       return;
     }
     write("", 0);
@@ -1023,7 +1023,7 @@ export function App({
     return received;
   }
 
-  /** "/subagent" — launch parallel background mini-agents (tasks split on "|"). */
+  /** "/subagent" - launch parallel background mini-agents (tasks split on "|"). */
   function startSubagents(tasks: string[]): void {
     write("", 0);
     rememberMessage(`/subagent ${tasks.join(" | ")}`);
@@ -1043,7 +1043,7 @@ export function App({
     setSubagents((previous) => [...previous, { id, model, startIndex, units }]);
     subRunningRef.current += tasks.length;
     for (const unit of units) void runSaUnit(id, unit.key, unit.task, controller, model);
-    flashNote(`⟳ ${tasks.length} subagent${tasks.length === 1 ? "" : "s"} started — esc cancels`);
+    flashNote(`⟳ ${tasks.length} subagent${tasks.length === 1 ? "" : "s"} started - esc cancels`);
   }
 
   /** Run one self-contained subagent loop: private buffer, own abort, shared confirm queue. */
@@ -1118,7 +1118,7 @@ export function App({
             const first = Object.values(args)[0];
             if (typeof first === "string") preview = ` ${first.slice(0, 70)}`;
           } catch {
-            // non-JSON args — no preview
+            // non-JSON args - no preview
           }
           const label = `⚙ ${call.name}${preview}`;
           setSubagents((previous) =>
@@ -1174,7 +1174,7 @@ export function App({
     if (remaining <= 0) onBatchDone(batchId);
   }
 
-  /** All units in a batch finished — build the report and queue it for folding. */
+  /** All units in a batch finished - build the report and queue it for folding. */
   function onBatchDone(batchId: number): void {
     const meta = saMetaRef.current.get(batchId);
     subAbortRef.current = null;
@@ -1313,7 +1313,7 @@ export function App({
     setTokens(null);
     setCost(null);
     setError("");
-    flashNote(`✓ forked into ${shortSessionId(fork.id)} — parent intact`);
+    flashNote(`✓ forked into ${shortSessionId(fork.id)} - parent intact`);
   }
 
   function logout(): void {
@@ -1325,7 +1325,7 @@ export function App({
     const cwd = process.cwd();
     const diff = diffForContext(cwd);
     const summary = filesSummary(cwd);
-    const hint = previous ? `The user rejected the previous suggestion "${previous.subject}" — write a fresh one that does not repeat its phrasing.` : "";
+    const hint = previous ? `The user rejected the previous suggestion "${previous.subject}" - write a fresh one that does not repeat its phrasing.` : "";
     const messages: Message[] = [
       {
         role: "system",
@@ -1350,15 +1350,15 @@ export function App({
     const cwd = process.cwd();
     const files = worktreeChanges(cwd);
     if (files === null) {
-      flashNote("commit aborted — not a git repository — run: git init");
+      flashNote("commit aborted - not a git repository - run: git init");
       return;
     }
     if (files.length === 0) {
-      flashNote("nothing to commit — working tree is clean");
+      flashNote("nothing to commit - working tree is clean");
       return;
     }
     if (!gitUserConfigured(cwd)) {
-      flashNote('git user.name / user.email unset — run: git config user.name "You" && git config user.email you@example.com');
+      flashNote('git user.name / user.email unset - run: git config user.name "You" && git config user.email you@example.com');
       return;
     }
     setOverlay("commit");
@@ -1375,7 +1375,7 @@ export function App({
       const sha = commitTree(process.cwd(), message);
       setCommitDialog(null);
       setOverlay(null);
-      flashNote(`✓ committed — ${sha} ${message.subject}`);
+      flashNote(`✓ committed - ${sha} ${message.subject}`);
     } catch (cause) {
       flashNote(`commit failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
@@ -1518,7 +1518,7 @@ export function App({
         break;
       }
       case "/map": {
-        const map = repositoryMap(process.cwd()) || "(empty project — nothing to map yet)";
+        const map = repositoryMap(process.cwd()) || "(empty project - nothing to map yet)";
         const mapId = ++asideSeqRef.current;
         setAsides((prev) => [
           ...prev.filter((entry) => entry.kind !== "map"),
@@ -1566,7 +1566,7 @@ export function App({
                     { role: "assistant", content: reply || "(no reply)", timestamp: new Date().toISOString() },
                   ],
                 });
-                flashNote(`✓ ${name} done — saved to /sessions`);
+                flashNote(`✓ ${name} done - saved to /sessions`);
               } catch (cause) {
                 setError(cause instanceof Error ? cause.message : String(cause));
               }
@@ -1579,7 +1579,7 @@ export function App({
           } else {
             flashNote(
               schedules
-                .map((s) => `${s.name} ↦ ${s.cron} (next ${s.nextRunISO ? new Date(s.nextRunISO).toLocaleString() : "—"})`)
+                .map((s) => `${s.name} ↦ ${s.cron} (next ${s.nextRunISO ? new Date(s.nextRunISO).toLocaleString() : "-"})`)
                 .join(" · "),
             );
           }
@@ -1683,7 +1683,7 @@ export function App({
         if (save) {
           const lastPrompt = sent[sent.length - 1];
           if (!lastPrompt || lastPrompt.startsWith("/")) {
-            flashNote("nothing to save yet — send a prompt first, then /sn save <name>");
+            flashNote("nothing to save yet - send a prompt first, then /sn save <name>");
             break;
           }
           const next = [...(activeConfig.snippets ?? []), { name: normalizeSnippetName(save[1] ?? ""), text: lastPrompt }];
@@ -1695,7 +1695,7 @@ export function App({
           const target = normalizeSnippetName(snippetArg);
           const snippet = (activeConfig.snippets ?? []).find((entry) => normalizeSnippetName(entry.name) === target);
           if (!snippet) {
-            flashNote(`no snippet named "${snippetArg}" — type /sn to browse`);
+            flashNote(`no snippet named "${snippetArg}" - type /sn to browse`);
             break;
           }
           write(snippet.text, 0);
@@ -1707,7 +1707,7 @@ export function App({
       }
       case "/subagent": {
         if (subRunningRef.current > 0) {
-          flashNote("⚠ subagents already running — wait or press esc");
+          flashNote("⚠ subagents already running - wait or press esc");
           break;
         }
         const tasks = trimmed
@@ -1716,7 +1716,7 @@ export function App({
           .map((task) => task.trim())
           .filter(Boolean);
         if (tasks.length === 0) {
-          setError("Usage: /subagent <task>, <task2> — any number of tasks, separated by commas, pipes, or new lines. Each runs as its own parallel agent.");
+          setError("Usage: /subagent <task>, <task2> - any number of tasks, separated by commas, pipes, or new lines. Each runs as its own parallel agent.");
           break;
         }
         startSubagents(tasks);
@@ -1725,7 +1725,7 @@ export function App({
       case "/compare": {
         const question = trimmed.replace(/^\/compare\b\s*/i, "");
         if (!question) {
-          setError("Usage: /compare <question> — picks a second model, compares answers.");
+          setError("Usage: /compare <question> - picks a second model, compares answers.");
           break;
         }
         if (busy || ab) {
@@ -1777,7 +1777,7 @@ export function App({
     void ollamaProbe()
       .then((found) => {
         if (!found) {
-          flashNote(`no Ollama server answered at ${OLLAMA_URL} — is \`ollama serve\` running?`);
+          flashNote(`no Ollama server answered at ${OLLAMA_URL} - is \`ollama serve\` running?`);
           return;
         }
         const merged = mergeOllamaProfiles(activeConfig.profiles ?? {}, found);
@@ -1789,11 +1789,11 @@ export function App({
         pricingRef.current = null;
         switchModel(merged.model);
         flashNote(
-          `✓ Ollama: ${found.models.join(", ")} — ${merged.created ? "profile created" : "using profile"}, model ${merged.model}`,
+          `✓ Ollama: ${found.models.join(", ")} - ${merged.created ? "profile created" : "using profile"}, model ${merged.model}`,
         );
       })
       .catch((cause: unknown) =>
-        flashNote(`ollama setup failed: ${cause instanceof Error ? cause.message : String(cause)} — is \`ollama serve\` running?`),
+        flashNote(`ollama setup failed: ${cause instanceof Error ? cause.message : String(cause)} - is \`ollama serve\` running?`),
       )
   }
 
@@ -1926,7 +1926,7 @@ export function App({
             : unit.status === "done"
               ? `done · ${((unit.ms ?? 0) / 1000).toFixed(1)}s`
               : unit.status;
-        const line = `  ${mark} [${unitIndex + 1}] ${unit.task} — ${label}`;
+        const line = `  ${mark} [${unitIndex + 1}] ${unit.task} - ${label}`;
         lines.push({ key: `${base}u${unitIndex}`, node: <Text dimColor>{line}</Text>, text: line, messageIndex: -1 });
       });
       if (batchIndex < subagents.length - 1) {
