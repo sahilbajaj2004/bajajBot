@@ -2,6 +2,11 @@ import Section from "./Section";
 
 const FEATURES = [
   {
+    cmd: "session.tabs",
+    title: "A frosted tab strip, one chat per tab",
+    body: "Every conversation gets a tab with its own scrollback, plan board and side questions. /new, /branch and /sessions open in a tab instead of replacing what you were reading, ctrl+t and ctrl+w do it from the keyboard, and the tabs you had open come back when you reopen the project.",
+  },
+  {
     cmd: "tools.ask_first",
     title: "Real tools that ask before they run",
     body: "Write, edit, delete and run are actual tools. Each risky step previews a colorized unified diff and waits for a y or n. Nothing executes without your approval.",
@@ -9,7 +14,7 @@ const FEATURES = [
   {
     cmd: "plan.board",
     title: "A live checklist above your input",
-    body: "set_plan keeps a ✓ / ▸ / ○ board that updates as the agent works. It persists with the session and clears on /new.",
+    body: "set_plan keeps a ✓ / ▸ / ○ board that updates as the agent works. It persists with the session and starts fresh in a new tab.",
   },
   {
     cmd: "agents.subresearch",

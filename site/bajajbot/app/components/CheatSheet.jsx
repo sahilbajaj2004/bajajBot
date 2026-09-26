@@ -13,7 +13,10 @@ const GROUPS = [
     name: "work",
     items: [
       ["/todo", "persistent per-project task list"],
-      ["/branch", "fork this chat into a new thread"],
+      ["/tabs", "open chats, 1-9 jumps, n for a new one"],
+      ["⌃T / ⌃W", "new tab / close the current tab"],
+      ["⌃→ / ⌃←", "next / previous tab"],
+      ["/branch", "fork this chat into its own tab"],
       ["/map", "see the project map the agent reads"],
       ["/checkpoints", "browse auto git snapshots"],
       ["/changes", "files touched this session"],

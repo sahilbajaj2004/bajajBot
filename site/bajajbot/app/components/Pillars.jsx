@@ -19,7 +19,7 @@ const PILLARS = [
   {
     name: "built_to_survive",
     title: "Built to survive",
-    body: "/retry, /undo, message queueing and auto-compaction keep a long, busy session useful from start to finish.",
+    body: "A tab per chat so long work stays split and findable, plus /retry, /undo, message queueing and auto-compaction to keep each one useful from start to finish.",
   },
 ];
 

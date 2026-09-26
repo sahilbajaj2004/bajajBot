@@ -1,6 +1,7 @@
 const CLAIMS = [
   "asks y/n before every write",
   "snapshots after every reply",
+  "a tab per chat, remembered per project",
   "undo any step with /undo",
   "plan board above your input",
   "parallel sub-research agents",

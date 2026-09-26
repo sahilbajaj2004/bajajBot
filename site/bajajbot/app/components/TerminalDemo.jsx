@@ -8,10 +8,21 @@ const SCRIPT = [
   { segs: [{ t: "$ npx bajajbot" }], mode: "type", delay: 350 },
   { segs: [{ t: "" }], mode: "instant", delay: 90 },
   {
-    segs: [{ t: "bajajbot v1.2.0 · gpt-oss-20b:free", c: "text-mute" }],
+    segs: [{ t: "bajajbot v3.0.0 · gpt-oss-20b:free", c: "text-mute" }],
     mode: "instant",
     delay: 240,
   },
+  {
+    segs: [
+      { t: " add dark mode…", c: "text-ember" },
+      { t: "×", c: "text-mute" },
+      { t: "  fix flaky tests", c: "text-faint" },
+      { t: "  +", c: "text-mute" },
+    ],
+    mode: "instant",
+    delay: 260,
+  },
+  { segs: [{ t: "" }], mode: "instant", delay: 60 },
   {
     segs: [{ t: "❯ add dark mode to this app" }],
     mode: "type",
@@ -193,7 +204,7 @@ export default function TerminalDemo() {
 
       <div
         id="term-screen"
-        className="relative h-[400px] overflow-hidden px-4 py-4 text-left text-[13px]"
+        className="relative h-[480px] overflow-hidden px-4 py-4 text-left text-[13px]"
       >
         <div className="pointer-events-none absolute inset-0 scanlines" />
         {SCRIPT.slice(0, line).map((_, idx) => jump(idx))}
