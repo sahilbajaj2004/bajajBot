@@ -27,6 +27,8 @@ export const COMMANDS: CommandDef[] = [
   { name: "/theme", description: "Switch the UI colorway" },
   { name: "/memory", description: "What the agent remembers across sessions" },
   { name: "/sessions", description: "Resume a saved chat" },
+  { name: "/tabs", description: "List open tabs - 1-9 jumps, n opens a new one" },
+  { name: "/close", description: "Close the current tab (ctrl+w)" },
   { name: "/branch", description: "Fork this chat into a diverging thread" },
   { name: "/usage", description: "Token and cost totals across all chats" },
   { name: "/schedule", description: "Cron-scheduled prompts · add <name> \"cron\" \"prompt\" · rm · run" },

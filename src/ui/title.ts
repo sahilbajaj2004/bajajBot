@@ -22,7 +22,14 @@ export function deriveSessionTitle(firstPrompt?: string): string | undefined {
   return name.length > 48 ? `${name.slice(0, 47)}…` : name;
 }
 
-/** Compact "#fc68"-style badge for a session id like "ses_fc68a88d…". */
+/** Compact "#fc68"-style badge for a session id like "ses_fc68a88d…" or "chat-1756…". */
 export function shortSessionId(id: string): string {
-  return id.replace(/^ses_?/i, "").slice(0, 4);
+  const bare = id.replace(/^ses_?/i, "");
+  // BajajBot ids are "chat-<epochms>[-n]"; the leading word is the same for
+  // every session, so badge the distinctive tail instead.
+  if (bare.startsWith("chat-")) {
+    const stamp = bare.slice(5).split("-")[0] ?? "";
+    return stamp.length > 4 ? stamp.slice(-4) : bare.slice(0, 4);
+  }
+  return bare.slice(0, 4);
 }

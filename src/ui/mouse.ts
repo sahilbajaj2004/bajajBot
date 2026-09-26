@@ -4,6 +4,8 @@ export type MouseInput =
   | { type: "press"; button: number; x: number; y: number }
   | { type: "drag"; button: number; x: number; y: number }
   | { type: "release"; button: number; x: number; y: number }
+  /** Pointer moved with no button held - hover. Needs mouse mode 1003. */
+  | { type: "motion"; x: number; y: number }
   | { type: "wheel"; direction: "up" | "down"; x: number; y: number };
 
 export interface MouseStdin {
@@ -128,7 +130,9 @@ export function createMouseStdin(
         } else if (released) {
           emit({ type: "release", button, x, y });
         } else if (code >= 32 && code < 64) {
-          emit({ type: "drag", button, x, y });
+          // 32 + button while held is a drag; 35 is hover with no button.
+          if (button === 3) emit({ type: "motion", x, y });
+          else emit({ type: "drag", button, x, y });
         } else {
           emit({ type: "press", button, x, y });
         }
@@ -145,7 +149,10 @@ export function createMouseStdin(
         const x = buffer[4] - 32;
         const y = buffer[5] - 32;
         if (code >= 96) emit({ type: "wheel", direction: code === 96 ? "up" : "down", x, y });
-        else if (button < 3 && x > 0 && y > 0) emit({ type: "press", button, x, y });
+        else if (code === 35) {
+          // Cells are 1-based; 0 means the report was malformed.
+          if (x > 0 && y > 0) emit({ type: "motion", x, y });
+        } else if (button < 3 && x > 0 && y > 0) emit({ type: "press", button, x, y });
         buffer = buffer.subarray(6);
         continue;
       }

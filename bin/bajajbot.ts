@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { startChat } from "../src/commands/chat.js";
 import { runPrintTurn } from "../src/commands/printCmd.js";
@@ -9,24 +7,9 @@ import { loadSession, listSessions } from "../src/session/history.js";
 import { registerSessionsCommand } from "../src/commands/sessionsCmd.js";
 import { registerConfigCommands } from "../src/commands/configCmd.js";
 import { registerUsageCommand } from "../src/commands/usageCmd.js";
+import { packageVersion } from "../src/util/pkgVersion.js";
 
 process.title = "bajajbot";
-
-function packageVersion(): string {
-  let dir = dirname(process.argv[1] ?? ".");
-  for (let i = 0; i < 5; i++) {
-    try {
-      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { name?: string; version?: string };
-      if (pkg.name === "bajajbot") return pkg.version ?? "unknown";
-    } catch {
-      dir = dirname(dir);
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return "unknown";
-}
 
 async function readPipedStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";

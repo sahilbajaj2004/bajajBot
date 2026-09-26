@@ -19,6 +19,41 @@ export const THEMES: Record<string, ThemePalette> = {
 
 export const DEFAULT_THEME = "ember";
 
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+function parseHex(hex: string): [number, number, number] | null {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 16);
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+}
+
+/**
+ * Blend two `#rrggbb` colors: t = 0 returns `from`, t = 1 returns `to`.
+ * Non-hex input (a named colour) is returned unchanged.
+ */
+export function mixHex(from: string, to: string, t: number): string {
+  const a = parseHex(from);
+  const b = parseHex(to);
+  if (!a || !b) return from;
+  const amount = clamp01(t);
+  const channels = a.map((value, index) =>
+    Math.round(value + (b[index] - value) * amount)
+      .toString(16)
+      .padStart(2, "0"),
+  );
+  return `#${channels.join("")}`;
+}
+
+/**
+ * Panel colour for the tab strip. Terminals have no alpha channel, so a
+ * "translucent" surface is faked by lifting the accent a little off black -
+ * which assumes a dark terminal background, like the rest of the UI.
+ */
+export function panelTint(strength: number): string {
+  return mixHex("#000000", theme.accent, strength);
+}
+
 /**
  * The live palette every UI component reads at render time. Mutated by
  * applyTheme(); the re-render triggered by the caller picks the new colors up.

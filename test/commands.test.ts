@@ -27,6 +27,8 @@ test("filterCommands matches command prefixes", () => {
     "/theme",
     "/memory",
     "/sessions",
+    "/tabs",
+    "/close",
     "/branch",
     "/usage",
     "/schedule",
@@ -44,6 +46,7 @@ test("filterCommands matches command prefixes", () => {
   assert.deepEqual(filterCommands("/sea").map((command) => command.name), ["/search"]);
   assert.deepEqual(filterCommands("/mo").map((command) => command.name), ["/model"]);
   assert.deepEqual(filterCommands("/model").map((command) => command.name), ["/model"]);
+  assert.deepEqual(filterCommands("/cl").map((command) => command.name), ["/close"]);
 });
 
 test("filterCommands hides popup once arguments are typed or input is not a command", () => {

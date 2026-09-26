@@ -25,7 +25,9 @@ export async function startChat(session?: Session, initialPrompt?: string, versi
     });
   }
   const mouse = createMouseStdin(process.stdin as NodeJS.ReadStream & { isTTY?: boolean });
-  if (process.stdout.isTTY) process.stdout.write("\x1b[?1002h\x1b[?1006h");
+  // 1003 = report motion even with no button held, so the tab strip can show
+  // its close button on hover. 1006 = SGR encoding.
+  if (process.stdout.isTTY) process.stdout.write("\x1b[?1003h\x1b[?1006h");
   try {
     const result = (await render(
       createElement(App, {
@@ -42,7 +44,7 @@ export async function startChat(session?: Session, initialPrompt?: string, versi
       printGoodbye(result);
     }
   } finally {
-    if (process.stdout.isTTY) process.stdout.write("\x1b[?1002l\x1b[?1006l\x1b[?1000l");
+    if (process.stdout.isTTY) process.stdout.write("\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[?1000l");
     mouse.cleanup();
   }
 }

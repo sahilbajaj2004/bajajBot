@@ -9,6 +9,7 @@ import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js
 import { toMarkdown } from "../session/export.js";
 import { compactMessages, estimateTokens, tokenLimit } from "../session/compact.js";
 import { loadAllSessions } from "../session/history.js";
+import { initialTabOrder, saveOpenTabs } from "../session/tabs.js";
 import { addUsage, aggregateUsage, emptyUsage } from "../session/usage.js";
 import { deriveSessionTitle } from "./title.js";
 import { createSession, forkSession, listSessions, loadSession, saveSession } from "../session/history.js";
@@ -48,6 +49,8 @@ import { Overlay } from "./Overlay.js";
 import { ProfilePicker } from "./ProfilePicker.js";
 import { SearchDialog, type SearchMatch } from "./SearchDialog.js";
 import { SessionPicker } from "./SessionPicker.js";
+import { TabBar, tabActionAt, type TabView } from "./TabBar.js";
+import { TabPicker } from "./TabPicker.js";
 import { SkillPicker } from "./SkillPicker.js";
 import { SnapshotPicker } from "./SnapshotPicker.js";
 import { ChangesOverlay } from "./ChangesOverlay.js";
@@ -65,7 +68,7 @@ import { busyStatus } from "../util/busyStatus.js";
 import { contextualTip, rotatingTip } from "../util/tips.js";
 import { DOUBLE_ESC_MS, escAction } from "../util/esc.js";
 
-type OverlayKind = "model" | "sessions" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "logout" | "compareModel" | "fallback" | "commit" | "route" | "snippet" | "todo" | "palette" | null;
+type OverlayKind = "model" | "sessions" | "tabs" | "search" | "profile" | "usage" | "skills" | "checkpoints" | "changes" | "theme" | "memory" | "logout" | "compareModel" | "fallback" | "commit" | "route" | "snippet" | "todo" | "palette" | null;
 
 interface ConfirmRequest {
   title: string;
@@ -148,6 +151,21 @@ const CONFIRM_RESERVED_ROWS = 13;
 const ERROR_RESERVED_ROWS = 3;
 const MIN_CHAT_BUDGET = 5;
 const MAX_AUTOCOMPLETE_ROWS = 5;
+/** One row for the tab strip above the chat. */
+const TAB_BAR_ROWS = 1;
+
+/** Per-tab state kept alive while another tab is focused. */
+interface TabState {
+  /** Last known session object for this tab (may predate the live turn). */
+  session: Session;
+  /** Live message list - runs ahead of session.messages mid-turn. */
+  messages: Message[];
+  plan: PlanItem[];
+  asides: AsideEntry[];
+  scrollOffset: number;
+  busy: boolean;
+  subagents: SaBatch[];
+}
 
 function LogoutDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
   useInput((character, key) => {
@@ -194,6 +212,11 @@ export function App({
   const [profileName, setProfileName] = useState("");
   const [session, setSession] = useState<Session>(initialSession);
   const [completed, setCompleted] = useState<Message[]>(initialSession.messages);
+  /** Open tab ids, left to right. The active one is always in this list. */
+  const [tabs, setTabs] = useState<string[]>(() => initialTabOrder(process.cwd(), initialSession.id));
+  const [activeId, setActiveId] = useState(initialSession.id);
+  /** Parked state for background tabs, keyed by session id. */
+  const tabCache = useRef(new Map<string, TabState>());
   const [input, setInput] = useState("");
   const [cursor, setCursor] = useState(0);
   const [streaming, setStreaming] = useState<string | null>(null);
@@ -257,6 +280,34 @@ export function App({
   const queueRef = useRef<string[]>([]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  // Mirrors of live view state, so parkActiveTab() can snapshot without stale closures.
+  const completedRef = useRef(completed);
+  completedRef.current = completed;
+  const planRef = useRef(plan);
+  planRef.current = plan;
+  const asidesRef = useRef(asides);
+  asidesRef.current = asides;
+  const subagentsRef = useRef(subagents);
+  subagentsRef.current = subagents;
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
+  const scrollOffsetRef = useRef(scrollOffset);
+  scrollOffsetRef.current = scrollOffset;
+  /** Live strip state for the mouse handler, which is registered once. */
+  const tabBarRef = useRef<{ views: TabView[]; activeId: string; columns: number; visible: boolean }>({
+    views: [],
+    activeId: initialSession.id,
+    columns: 0,
+    visible: false,
+  });
+  /** Column the pointer rests on, so the strip can reveal its close button. */
+  const [hoverX, setHoverX] = useState<number | null>(null);
+  const hoverRef = useRef<number | null>(null);
+  hoverRef.current = hoverX;
   const lastTurnMutationsRef = useRef<FileMutation[]>([]);
   const pricingRef = useRef<Map<string, ModelInfo> | null>(null);
 
@@ -327,10 +378,40 @@ export function App({
   useEffect(() => {
     if (!mouse) return;
     return mouse.on((event) => {
+      if (event.type === "motion") {
+        // Hover only matters for the close button, and motion events are
+        // frequent - only repaint when the answer actually changes.
+        const bar = tabBarRef.current;
+        const next =
+          bar.visible && event.y === 1 && tabActionAt(event.x - 1, bar.views, bar.activeId, bar.columns)?.kind === "close"
+            ? event.x - 1
+            : null;
+        if (next !== hoverRef.current) {
+          hoverRef.current = next;
+          setHoverX(next);
+        }
+        return;
+      }
       if (event.type === "wheel") return;
       const geom = geomRef.current;
       if (event.type === "press") {
         dragRef.current = null;
+        // The tab strip owns the top row: + opens a tab, a tab selects it,
+        // and the active tab's × closes it. Checked before the chat
+        // selection path so it also works over the splash screen.
+        if (event.button === 0 && event.y === 1) {
+          const bar = tabBarRef.current;
+          const action = bar.visible
+            ? tabActionAt(event.x - 1, bar.views, bar.activeId, bar.columns)
+            : null;
+          if (action) {
+            setSelection(null);
+            if (action.kind === "new") startNewChat();
+            else if (action.kind === "select") focusTab(action.id);
+            else closeTab(action.id);
+            return;
+          }
+        }
         if (event.button !== 0 || !uiRef.current.selectable) {
           setSelection(null);
           return;
@@ -488,6 +569,23 @@ export function App({
     if (overlay) return;
     if (key.ctrl && character?.toLowerCase() === "k") {
       openOverlay("palette");
+      return;
+    }
+    if (key.ctrl && character?.toLowerCase() === "t") {
+      if (turnRunning()) flashNote("⚠ finish or interrupt the turn before opening a tab");
+      else startNewChat();
+      return;
+    }
+    if (key.ctrl && character?.toLowerCase() === "w") {
+      closeTab(activeIdRef.current);
+      return;
+    }
+    if (key.ctrl && key.rightArrow) {
+      cycleTab(1);
+      return;
+    }
+    if (key.ctrl && key.leftArrow) {
+      cycleTab(-1);
       return;
     }
     if (key.escape && subRunningRef.current > 0) {
@@ -944,9 +1042,14 @@ export function App({
         : {}),
     };
     saveSession(finalSession);
-    setCompleted(convo);
-    setSession(finalSession);
-    sessionRef.current = finalSession;
+    // Always persist, but only take over the live view if this turn still owns
+    // the active tab. Otherwise the reply belongs to a background tab and
+    // pushing it here would send the user's next message to the wrong chat.
+    if (activeIdRef.current === finalSession.id) {
+      setCompleted(convo);
+      setSession(finalSession);
+      sessionRef.current = finalSession;
+    }
     try {
       const lastUser = [...convo].reverse().find((message) => message.role === "user");
       const firstLine = (lastUser?.content ?? "turn").split("\n")[0];
@@ -1278,41 +1381,170 @@ export function App({
     setError("");
   }
 
-  function resume(id: string): void {
+  /**
+   * Is a turn in flight? `busy` only means "tokens are arriving", which is
+   * false while a request is still connecting or backing off, so use the flag
+   * that spans the whole turn. Read from a ref, not the render closure: the
+   * mouse listener is registered once, so `busy` inside it is frozen at mount
+   * and any guard written against it would silently pass.
+   */
+  function turnRunning(): boolean {
+    return mainTurnRef.current;
+  }
+
+  /** Park the live session state so another tab can be shown without losing it. */
+  function parkActiveTab(): void {
+    const current = sessionRef.current;
+    tabCache.current.set(current.id, {
+      session: current,
+      messages: completedRef.current,
+      plan: planRef.current,
+      asides: asidesRef.current,
+      scrollOffset: scrollOffsetRef.current,
+      busy: streamingRef.current !== null,
+      subagents: subagentsRef.current,
+    });
+  }
+
+  /**
+   * Disk is authoritative for content (another window may have appended);
+   * the cache owns the transient view state that never reaches disk.
+   */
+  function mergeTab(source: TabState, loaded: Session | null): Session {
+    const base = loaded ?? source.session;
+    return {
+      ...base,
+      messages: source.messages.length > base.messages.length ? source.messages : base.messages,
+      plan: source.plan.length ? source.plan : base.plan ?? [],
+    };
+  }
+
+  /** Park the outgoing tab, then make `next` the live session and active tab. */
+  function activateTab(next: Session, view?: Partial<TabState>): void {
+    parkActiveTab();
+    if (!tabsRef.current.includes(next.id)) writeTabs([...tabsRef.current, next.id]);
+    activeIdRef.current = next.id;
+    setActiveId(next.id);
+    sessionRef.current = next;
+    setSession(next);
+    setCompleted(next.messages);
+    setPlan(next.plan ?? []);
+    setAsides(view?.asides ?? []);
+    setSubagents(view?.subagents ?? []);
+    setScrollOffset(view?.scrollOffset ?? 0);
+    setTokens(null);
+    setCost(null);
+    setError("");
+    setSearch(null);
+  }
+
+  function writeTabs(next: string[]): void {
+    tabsRef.current = next;
+    setTabs(next);
+    saveOpenTabs(process.cwd(), next);
+  }
+
+  /** Switch to a tab that is already open, from cache or from disk. */
+  function focusTab(id: string): void {
+    if (id === activeIdRef.current) return;
+    // A running turn writes its result through sessionRef, so switching
+    // mid-turn would land the reply in the wrong tab. Refuse instead.
+    if (turnRunning()) {
+      flashNote("⚠ finish or interrupt the turn before switching tabs");
+      return;
+    }
+    const cached = tabCache.current.get(id);
+    let loaded: Session | null = null;
     try {
-      const loaded = loadSession(id);
-      setSession(loaded);
-      setCompleted(loaded.messages);
-      setPlan(loaded.plan ?? []);
-      setAsides([]);
-      setTokens(null);
-      setCost(null);
-      setError("");
+      loaded = loadSession(id);
+    } catch {
+      loaded = null;
+    }
+    if (!loaded && !cached) {
+      flashNote(`⚠ tab ${shortSessionId(id)} could not be opened`);
+      return;
+    }
+    const source: TabState = cached ?? {
+      session: loaded!,
+      messages: loaded!.messages,
+      plan: loaded!.plan ?? [],
+      asides: [],
+      scrollOffset: 0,
+      busy: false,
+      subagents: [],
+    };
+    activateTab(mergeTab(source, loaded), {
+      asides: source.asides,
+      subagents: source.subagents,
+      scrollOffset: source.scrollOffset,
+    });
+  }
+
+  /** Open a session (new, forked, or resumed) as the active tab. */
+  function openInTab(next: Session): void {
+    // Drop any parked view state so the session we were handed wins.
+    tabCache.current.delete(next.id);
+    activateTab(next);
+  }
+
+  function closeTab(id: string): void {
+    if (turnRunning() && id === activeIdRef.current) {
+      flashNote("⚠ finish or interrupt the turn before closing a tab");
+      return;
+    }
+    const remaining = tabsRef.current.filter((entry) => entry !== id);
+    tabCache.current.delete(id);
+    if (remaining.length === 0) {
+      // Never leave zero tabs - a fresh empty one takes the closed tab's place.
+      const fresh = createSession(sessionRef.current.model);
+      writeTabs([fresh.id]);
+      tabCache.current.delete(fresh.id);
+      activateTab(fresh);
+      return;
+    }
+    const wasActive = id === activeIdRef.current;
+    const index = tabsRef.current.indexOf(id);
+    writeTabs(remaining);
+    if (!wasActive) return;
+    focusTab(remaining[Math.min(Math.max(index - 1, 0), remaining.length - 1)]);
+  }
+
+  function cycleTab(direction: 1 | -1): void {
+    const open = tabsRef.current;
+    if (open.length < 2 || turnRunning()) return;
+    const index = open.indexOf(activeIdRef.current);
+    const next = (index + direction + open.length) % open.length;
+    focusTab(open[next]);
+  }
+
+  function resume(id: string): void {
+    if (turnRunning()) {
+      flashNote("⚠ finish or interrupt the turn before switching tabs");
+      return;
+    }
+    try {
+      openInTab(loadSession(id));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
   function startNewChat(): void {
-    const fresh = createSession(session.model);
-    setSession(fresh);
-    setCompleted([]);
-    setPlan([]);
-    setAsides([]);
-    setTokens(null);
-    setCost(null);
-    setError("");
+    if (turnRunning()) {
+      flashNote("⚠ finish or interrupt the turn before starting a new tab");
+      return;
+    }
+    const fresh = createSession(sessionRef.current.model);
+    openInTab(fresh);
   }
 
   function forkCurrent(): void {
-    const fork = forkSession(session);
-    setSession(fork);
-    setCompleted(fork.messages);
-    setPlan(fork.plan ?? []);
-    setAsides([]);
-    setTokens(null);
-    setCost(null);
-    setError("");
+    if (turnRunning()) {
+      flashNote("⚠ finish or interrupt the turn before forking");
+      return;
+    }
+    const fork = forkSession(sessionRef.current);
+    openInTab(fork);
     flashNote(`✓ forked into ${shortSessionId(fork.id)} - parent intact`);
   }
 
@@ -1739,6 +1971,16 @@ export function App({
       case "/sessions":
         openOverlay("sessions");
         break;
+      case "/tabs":
+        if (busy) {
+          flashNote("⚠ finish or interrupt the turn first");
+          break;
+        }
+        openOverlay("tabs");
+        break;
+      case "/close":
+        closeTab(activeIdRef.current);
+        break;
       case "/branch":
         forkCurrent();
         break;
@@ -1796,6 +2038,29 @@ export function App({
         flashNote(`ollama setup failed: ${cause instanceof Error ? cause.message : String(cause)} - is \`ollama serve\` running?`),
       )
   }
+
+  /** Open tabs in display order, titled for the tab strip. */
+  const tabViews = useMemo<TabView[]>(() => {
+    return tabs.map((id) => {
+      if (id === activeId) {
+        return {
+          id,
+          title: session.title ?? (completed.length ? firstWords(completed) : "new chat"),
+          running: busy,
+        };
+      }
+      const cached = tabCache.current.get(id);
+      if (cached) {
+        return { id, title: cached.session.title || "new chat", running: cached.busy };
+      }
+      // Not parked yet (restored on boot) - read the title off disk.
+      try {
+        return { id, title: loadSession(id).title ?? "chat", running: false };
+      } catch {
+        return { id, title: "new chat", running: false };
+      }
+    });
+  }, [tabs, activeId, session.title, completed, busy]);
 
   const chat = useMemo(() => {
     const messages: Message[] =
@@ -1938,6 +2203,7 @@ export function App({
   const chatBudget = Math.max(
     rows -
       CHAT_RESERVED_ROWS -
+      TAB_BAR_ROWS -
       (confirmRequest ? CONFIRM_RESERVED_ROWS : 0) -
       (error ? ERROR_RESERVED_ROWS : 0) -
       (showAuto ? Math.min(suggestions.length, MAX_AUTOCOMPLETE_ROWS) : 0),
@@ -1950,6 +2216,9 @@ export function App({
     Math.max(0, chat.length - offset),
   );
   const showChatBody = !overlay && (!fresh || confirmRequest !== null);
+  /** The strip stays up on an empty tab, so a new tab is never a dead end. */
+  const showTabBar = !overlay && confirmRequest === null;
+  tabBarRef.current = { views: tabViews, activeId, columns, visible: showTabBar };
   const busyElapsedSecs = turnStartRef.current != null ? (Date.now() - turnStartRef.current) / 1000 : 0;
   const ctxPercent = Math.min(100, (estimateTokens(completed) / tokenLimit(activeConfig)) * 100);
   const statusTip = error
@@ -1969,7 +2238,7 @@ export function App({
     planRows +
     3 + // InputBox border box
     2; // StatusBar rule + row
-  const chatTopRow = rows - visibleLines.length - stackRows;
+  const chatTopRow = rows - visibleLines.length - stackRows - TAB_BAR_ROWS;
   geomRef.current = { top: chatTopRow, count: visibleLines.length };
   textsRef.current = visibleLines.map((line) => line.text);
   uiRef.current = { selectable: showChatBody };
@@ -2002,13 +2271,22 @@ export function App({
   const wheelDown = (): void => setScrollOffset((value) => Math.max(0, value - SCROLL_STEP));
 
   return (
-    <Box flexDirection="column">
+    <Box height={rows} flexDirection="column">
+      {showTabBar ? (
+        <TabBar
+          tabs={tabViews}
+          activeId={activeId}
+          columns={columns}
+          frame={SPINNER_FRAMES[blink % SPINNER_FRAMES.length]}
+          showClose={hoverX !== null}
+        />
+      ) : null}
       {fresh && !overlay && !confirmRequest ? (
         <Splash
           config={activeConfig}
           input={input}
           cursor={cursor}
-          rows={rows}
+          rows={rows - TAB_BAR_ROWS}
           columns={columns}
           suggestions={suggestions}
           autoSelected={autoSelected}
@@ -2177,6 +2455,21 @@ export function App({
           }}
         />
       ) : null}
+      {overlay === "tabs" ? (
+        <TabPicker
+          tabs={tabViews}
+          currentId={activeId}
+          onSelect={(id) => {
+            closeOverlay();
+            if (id) focusTab(id);
+          }}
+          onClose={closeOverlay}
+          onNew={() => {
+            closeOverlay();
+            startNewChat();
+          }}
+        />
+      ) : null}
       {overlay === "search" && search ? (
         <SearchDialog
           matches={search.matches}
@@ -2193,7 +2486,7 @@ export function App({
         />
       ) : null}
       {showChatBody ? (
-        <Box height={rows} flexDirection="column" justifyContent="flex-end">
+        <Box flexDirection="column" justifyContent="flex-end" flexGrow={1}>
           <ChatViewport lines={visibleLines} highlight={highlight} width={columns} />
           {offset > 0 ? (
             <Text dimColor>{`  ↑ ${offset} more lines above · pgDn / end returns to latest`}</Text>

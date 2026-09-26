@@ -12,3 +12,11 @@ test("shortSessionId handles ids without prefix and short ids", () => {
   assert.equal(shortSessionId("ab"), "ab");
   assert.equal(shortSessionId(""), "");
 });
+
+test("shortSessionId badges the timestamp tail of chat- ids, not the shared prefix", () => {
+  assert.equal(shortSessionId("chat-1758000000000"), "0000");
+  assert.equal(shortSessionId("chat-1758000012345"), "2345");
+  // A collision suffix must not bleed into the badge.
+  assert.equal(shortSessionId("chat-1758000000000-2"), "0000");
+  assert.notEqual(shortSessionId("chat-1758000000000"), shortSessionId("chat-1758000011111"));
+});

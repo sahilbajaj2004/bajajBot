@@ -40,7 +40,8 @@ npx bajajbot
 - **Ollama auto-setup** - `/ollama` finds your local Ollama server (`http://localhost:11434/v1`), creates a ready-to-use profile listing the installed models, and switches you to it in one shot
 - **Command palette** - press `⌃k` (or `/help`) for a searchable command finder that filters by name *and* description and runs the selected command in place
 - **Repo map + `/map`** - the agent's system prompt auto-includes a compact map of your project (directories, notable files, extension counts), so it navigates the tree without blind probing first; `/map` shows you the same map
-- **Session branching** - `/branch` forks the current chat into a diverging thread; the original stays intact, and `/sessions` marks forks (`↳ fork of …`) so you can switch between them
+- **Session tabs** - a frosted tab strip across the top (gradient surface, `×` on hover), one tab per chat, each with its own scrollback, plan board and side questions; `ctrl+t` new, `ctrl+w` close, `ctrl+→`/`ctrl+←` to switch, `/tabs` to jump by number, or click `+` and a tab. Tabs are remembered per project, so your workspace comes back when you reopen bajajbot
+- **Session branching** - `/branch` forks the current chat into a diverging thread; the fork opens in its own tab, the original stays intact, and `/sessions` marks forks (`↳ fork of …`)
 - **Non-interactive mode** - `bajajbot -p "prompt"` with piped stdin, for scripts and CI
 - `/usage` dashboard + `spendLimitUsd` guardrail - tokens and estimated cost per session and across all chats
 - `/schedule` cron prompts - register 5-field cron expressions (`minute hour day-of-month month day-of-week`) that run headless turns on their own sessions (`add`, `rm`, `run`, list)
@@ -161,10 +162,12 @@ bajajbot config unset temperature
 | `/undo` | - | Remove the last exchange and revert its file changes |
 | `/export` | optional `json` | Save the chat to `bajajbot-<session>.md` (or `.json`) |
 | `/search <text>` | required | Find text in this chat and jump between matches |
-| `/sessions` | - | Resume a saved chat from an overlay; forks (see `/branch`) are marked `↳ fork of …` |
-| `/branch` | - | Fork the current chat into a diverging thread - copies messages, plan and usage; the original stays intact, and `/sessions` switches between the two |
+| `/sessions` | - | Resume a saved chat from an overlay; forks (see `/branch`) are marked `↳ fork of …`. The chat opens in its own tab |
+| `/tabs` | - | List the open tabs - `1`-`9` jump straight to one, `n` opens a new tab, ↑↓ + Enter also work |
+| `/close` | - | Close the current tab (same as `ctrl+w`); the last tab is replaced by a fresh empty one |
+| `/branch` | - | Fork the current chat into a diverging thread - copies messages, plan and usage; the fork opens in a new tab and the original stays intact |
 | `/profile` | - | Switch a saved provider profile |
-| `/new` | - | Start a fresh chat (plan board resets too) |
+| `/new` | - | Start a fresh chat in a new tab (the current one stays open) |
 | `/logout` | - | Delete all config and sessions |
 | `/help` | - | Open the command palette - type to filter by name *or* description, enter runs the command (⌃k does the same from anywhere) |
 
@@ -179,6 +182,9 @@ Esc              Interrupt streaming / close dialogs / deny action / cancel arme
 Tab              Autocomplete slash commands and @file paths
 PgUp / PgDn      Scroll chat history (mouse wheel works too)
 Home / End       Jump to top / return to latest
+Ctrl+T           New tab (same as `/new`)
+Ctrl+W           Close the current tab (same as `/close`)
+Ctrl+→ / Ctrl+← Move to the next / previous tab
 Ctrl+C           Exit (shows the resume command for the session)
 y / n            Allow / deny a risky tool confirmation
 f                Pin or unpin ★ the highlighted model inside /model
@@ -186,6 +192,48 @@ f                Pin or unpin ★ the highlighted model inside /model
 
 While the assistant is streaming you can keep typing - press Enter to queue
 messages; they send automatically when the reply finishes.
+
+---
+
+## Tabs
+
+The strip along the top is your open chats, one tab each, titled from the first
+thing you asked. The active tab is lit with a frosted gradient and carries a
+`×`; a tab with a turn in flight shows a spinner. The `+` after the tabs opens
+a new one.
+
+Terminals have no alpha channel, so the translucent look is produced by lifting
+the theme's accent a little off black and stepping it across the tab: lit on the
+left, fading right, with the title pinned light so it stays readable whatever
+your terminal background is. Background tabs get the same surface, barely
+lifted, so the whole strip reads as one frosted band.
+
+| Key | Action |
+| --- | --- |
+| `ctrl+t` | New empty tab, focused |
+| `ctrl+w` | Close the current tab |
+| `ctrl+→` / `ctrl+←` | Next / previous tab |
+| `1`-`9` in `/tabs` | Jump straight to a tab |
+
+With the mouse: click `+` for a new tab, click a tab to switch to it, and hover
+the active tab to reveal its `×` (click it to close). The close cell is always
+reserved, so revealing it never shifts the strip under your pointer. Tabs are
+sized to their titles, so the strip stays compact and long titles are clipped
+rather than pushing others off-screen.
+
+- `/new`, `/branch`, and resuming from `/sessions` all open their chat in a tab
+  instead of replacing what you were looking at, so nothing is lost.
+- Each tab keeps its own scrollback, plan board, side questions, and subagent
+  chips - switching away and back leaves everything as you left it.
+- Tabs are remembered per project in `~/.bajajbot/tabs.json` (newest 8), so
+  reopening bajajbot in the same directory restores your workspace.
+- A turn in flight owns the session it started in, so opening, switching, and
+  closing tabs are all refused while a reply is streaming (or while a risky
+  action is awaiting your `y`/`n`) - otherwise a finishing turn would land in
+  whichever tab you were looking at. Interrupt with esc ×2 first if you want
+  to move.
+- Closing a tab never deletes the chat - it just closes it. The last tab is
+  replaced by a fresh empty one rather than leaving you with no tabs.
 
 ---
 
@@ -354,6 +402,7 @@ Everything lives under `~/.bajajbot/` (Windows: `%USERPROFILE%\.bajajbot`):
 ~/.bajajbot/
 ├── config.json          settings, profiles, favorites (0600 permissions)
 ├── sessions/*.json      every chat: messages, plan, usage totals
+├── tabs.json            which chats were open, per project directory
 ├── skills/              your global skills (*.md)
 └── last-update-check    marker for the daily npm update check
 ```
@@ -400,6 +449,8 @@ npm run build       # type-check + compile to dist/
 npm test            # build + run the test suite
 npm run dev         # run from source with tsx
 npm run stream      # one-shot prompt without the TUI
+npm run smoke       # TUI against a local mock model server (needs a TTY)
+npm run tabs        # headless tab-strip checks: renders, keybindings, exits non-zero on failure
 ```
 
 ### Project layout
@@ -409,11 +460,12 @@ bin/bajajbot.ts          CLI entry (commander): -p, -c, positional prompts
 src/config/              Config types, constants, load/save (~/.bajajbot)
 src/provider/            OpenAI-compatible client (SSE streaming), retries, model list
 src/tools/               Agent tools: fs, search, shell, web, skills, plan, git checkpoints
-src/session/             Session model, history storage, compaction, usage aggregation
+src/session/             Session model, history storage, tab list, compaction, usage aggregation
 src/commands/            CLI commands (chat, config, sessions, usage, print mode)
-src/ui/                  Ink components: App, pickers, overlays, plan board, markdown
+src/ui/                  Ink components: App, pickers, overlays, plan board, tab bar, markdown
 src/util/                Attachments, diffs, update checks, small helpers
 test/                    node:test suites
+scripts/                 dev harnesses: mock-server smoke test, headless TUI checks
 ```
 
 ## Publish to npm

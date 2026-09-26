@@ -8,12 +8,21 @@ const sessionPath = (id: string) => join(sessionsDir(), `${id}.json`);
 
 export function createSession(model: string): Session {
   const now = new Date().toISOString();
-  return { id: `chat-${Date.now()}`, createdAt: now, updatedAt: now, model, messages: [] };
+  // Two chats opened in the same millisecond must not share an id.
+  let id = `chat-${Date.now()}`;
+  for (let attempt = 1; attempt < 100 && existsSync(sessionPath(id)); attempt += 1) {
+    id = `chat-${Date.now()}-${attempt}`;
+  }
+  return { id, createdAt: now, updatedAt: now, model, messages: [] };
 }
 
 export function saveSession(session: Session): void {
   mkdirSync(sessionsDir(), { recursive: true });
   writeFileSync(sessionPath(session.id), `${JSON.stringify(session, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function sessionExists(id: string): boolean {
+  return existsSync(sessionPath(id));
 }
 
 export function loadSession(id: string): Session {
