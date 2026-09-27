@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileAtomic } from "../util/atomicWrite.js";
 import { join } from "node:path";
 import { appDir } from "../config/store.js";
 import { parseCron, nextCronDate } from "./cron.js";
@@ -34,7 +35,7 @@ export function loadSchedules(): ScheduledPrompt[] {
 
 export function saveSchedules(schedules: ScheduledPrompt[]): void {
   mkdirSync(appDir(), { recursive: true });
-  writeFileSync(schedulesPath(), `${JSON.stringify(schedules, null, 2)}\n`, { mode: 0o600 });
+  writeFileAtomic(schedulesPath(), `${JSON.stringify(schedules, null, 2)}\n`, 0o600);
 }
 
 export function addSchedule(entry: Omit<ScheduledPrompt, "nextRunISO">): ScheduledPrompt {

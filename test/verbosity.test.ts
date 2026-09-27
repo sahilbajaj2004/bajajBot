@@ -144,6 +144,68 @@ test("a giant argument object is capped too", () => {
   assert.ok(plain([big], "normal").includes("more arg lines"));
 });
 
+test("expanded detail wraps instead of overflowing the terminal", () => {
+  // Bubbles wrap, replies wrap, and tool summaries are hard-capped - expanded
+  // detail has to obey the same rule or it pushes the layout wider than the
+  // terminal and breaks the scroll math.
+  const long = "x".repeat(500);
+  const wide: Message = { role: "tool", content: `head\n${long}`, timestamp: ts, toolCallId: "c" };
+  for (const columns of [40, 60, 100]) {
+    for (const line of buildChatLines([wide], columns, "verbose")) {
+      assert.ok(
+        line.text.length <= columns,
+        `at ${columns} columns a line was ${line.text.length} wide: ${line.text.slice(0, 40)}…`,
+      );
+    }
+  }
+});
+
+test("wrapped detail keeps every character of the body", () => {
+  const body = "y".repeat(250);
+  const wide: Message = { role: "tool", content: `head\n${body}`, timestamp: ts, toolCallId: "c" };
+  const joined = plain([wide], "verbose").replace(/\s+/g, "");
+  assert.equal(joined.split("y").length - 1, 250);
+});
+
+test("a long tool summary wraps instead of overflowing, at every level", () => {
+  // Pre-existing defect: argPreview caps at 70 characters but never wrapped, so
+  // "  ⚙ write <70 chars>" was 80 wide and overran an 80-column terminal.
+  const long: Message = {
+    role: "assistant",
+    content: "",
+    timestamp: ts,
+    toolCalls: [{ id: "c", name: "read", args: JSON.stringify({ path: "d/".repeat(60) }) }],
+  };
+  for (const level of VERBOSITY_LEVELS) {
+    for (const columns of [40, 80]) {
+      for (const line of buildChatLines([long], columns, level)) {
+        assert.ok(line.text.length <= columns, `${level} at ${columns}: ${line.text.length} wide`);
+      }
+    }
+  }
+});
+
+test("a long tool result summary wraps too", () => {
+  const long: Message = { role: "tool", content: "e".repeat(300), timestamp: ts, toolCallId: "c" };
+  for (const columns of [40, 80]) {
+    for (const line of buildChatLines([long], columns, "quiet")) {
+      assert.ok(line.text.length <= columns, `at ${columns}: ${line.text.length} wide`);
+    }
+  }
+});
+
+test("expanded argument detail wraps too", () => {
+  const big: Message = {
+    role: "assistant",
+    content: "",
+    timestamp: ts,
+    toolCalls: [{ id: "c", name: "write", args: JSON.stringify({ content: "z".repeat(400) }) }],
+  };
+  for (const line of buildChatLines([big], 50, "normal")) {
+    assert.ok(line.text.length <= 50, `line was ${line.text.length} wide`);
+  }
+});
+
 test("unparsable arguments are shown raw rather than dropped", () => {
   const raw: Message = {
     role: "assistant",

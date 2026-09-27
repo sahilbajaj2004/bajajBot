@@ -150,9 +150,24 @@ check("the reloaded route rule is live", /routed → routed\/m9/.test(note()), J
 // 4. A corrupt file must not brick the session.
 writeAlt({}, "{ this is not json");
 await command("/reload", 400);
-check("a corrupt file is reported", /✗ reload failed|corrupted/.test(note()), JSON.stringify(note()));
+check("a corrupt file is reported", /✗ reload failed - not valid JSON/.test(note()), JSON.stringify(note()));
 await send("route me");
 check("the working config survived the bad file", /routed → routed\/m9/.test(note()), JSON.stringify(note()));
+
+// 4b. Valid JSON that is not a usable config is reported as such, not as a
+//     parse failure - the two are different mistakes with different fixes.
+writeAlt({}, JSON.stringify({ ...base, provider: "custm" }, null, 2));
+await command("/reload", 400);
+check("an invalid config is named as such", /invalid fields/.test(note()), JSON.stringify(note()));
+// The full reason, including which field and which file, goes in the error line
+// above the composer, which is as wide as the terminal.
+check(
+  "the full reason is shown in the error line",
+  /not usable \(provider must be one of/.test(stdout.lines.join("\n")),
+  JSON.stringify(stdout.lines.filter((line) => line.includes("usable")).slice(0, 1)),
+);
+await send("route me");
+check("the working config survived the invalid file", /routed → routed\/m9/.test(note()), JSON.stringify(note()));
 
 // 5. Reloading an identical file says so, rather than claiming a change.
 writeAlt({ routes: [{ pattern: "route me", model: "routed/m9", active: true }] });

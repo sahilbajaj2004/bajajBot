@@ -30,7 +30,11 @@ export function readMemory(options: { home?: string } = {}): string[] {
 function writeMemory(facts: string[], options: { home?: string } = {}): void {
   const path = memoryPath(options);
   mkdirSync(join(path, ".."), { recursive: true });
-  writeFileSync(path, facts.map((fact) => `- ${fact}`).join("\n") + (facts.length ? "\n" : ""));
+  // 0600 like every other file we persist: memory captures whatever the agent
+  // was told, which is not something to leave world-readable.
+  writeFileSync(path, facts.map((fact) => `- ${fact}`).join("\n") + (facts.length ? "\n" : ""), {
+    mode: 0o600,
+  });
 }
 
 /** Append a fact; exact duplicates (case-insensitive) are ignored. */

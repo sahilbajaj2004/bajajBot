@@ -83,6 +83,40 @@ function capped(lines: string[]): { shown: string[]; hidden: number } {
 }
 
 /**
+ * Expanded tool detail is indented under its summary, and every other chat line
+ * is wrapped to the terminal first - bubbles via wrapText, replies via
+ * renderMarkdown. An over-long line here would push the layout wider than the
+ * terminal, so these wrap too.
+ */
+function detailLines(rows: string[], width: number): { text: string; plain: string }[] {
+  const out: { text: string; plain: string }[] = [];
+  for (const row of rows) {
+    const body = row.trim().length > 0 ? row : "";
+    for (const piece of wrapText(body, width)) {
+      const text = piece.length > 0 ? `      ${piece}` : "      ";
+      out.push({ text, plain: text });
+    }
+  }
+  return out;
+}
+
+/**
+ * A one-line tool summary (the call line, the result line). The character caps
+ * keep it a summary, and wrapping keeps it inside the terminal: a 70-character
+ * argument preview still overruns an 80-column window once the prefix and the
+ * padding around a 6-space gutter are counted.
+ */
+function summaryLines(prefix: string, body: string, width: number): { text: string; plain: string }[] {
+  const out: { text: string; plain: string }[] = [];
+  const pieces = wrapText(body, Math.max(width, 8));
+  pieces.forEach((piece, index) => {
+    const text = index === 0 ? `${prefix}${piece}` : `      ${piece}`;
+    out.push({ text, plain: text });
+  });
+  return out.length > 0 ? out : [{ text: prefix, plain: prefix }];
+}
+
+/**
  * Top/bottom border strings for a chat bubble that exactly fit the content
  * width. Labels (e.g. "you") ride the top border when they fit; otherwise the
  * classic plain border is used so the two lines always align.
@@ -169,22 +203,24 @@ export function buildChatLines(
       const rows = message.content.split("\n");
       const headIndex = rows.findIndex((entry) => entry.trim().length > 0);
       const first = headIndex >= 0 ? (rows[headIndex] ?? "") : "(no output)";
-      const plain = `  ↳ ${failed ? "✗" : "✓"} ${first.slice(0, 100)}`;
+      const mark = failed ? "✗" : "✓";
+      const body = first.slice(0, 100);
+      const [head, ...rest] = summaryLines(`  ↳ ${mark} `, body, Math.max(inner, 16));
       push(
         <Text dimColor>
           {"  ↳ "}
-          <Text color={failed ? theme.danger : undefined}>{failed ? "✗" : "✓"}</Text> {first.slice(0, 100)}
+          <Text color={failed ? theme.danger : undefined}>{mark}</Text> {head?.text.slice(5) ?? ""}
         </Text>,
-        plain,
+        head?.plain ?? `  ↳ ${mark}`,
       );
+      for (const piece of rest) push(<Text dimColor>{piece.text}</Text>, piece.plain);
       // The head line is already shown above, so only the rest of the body is
       // expanded - no duplicated first line, and a one-line result stays a
       // single line even at verbose.
       if (showsToolOutput(verbosity) && headIndex >= 0 && rows.length > headIndex + 1) {
         const { shown, hidden } = capped(rows.slice(headIndex + 1));
-        for (const row of shown) {
-          const text = row.length > 0 ? `      ${row}` : "      ";
-          push(<Text dimColor>{text}</Text>, text);
+        for (const piece of detailLines(shown, Math.max(inner - 6, 20))) {
+          push(<Text dimColor>{piece.text}</Text>, piece.plain);
         }
         if (hidden > 0) {
           const text = `      … +${hidden} more lines - /export for the full text`;
@@ -196,20 +232,13 @@ export function buildChatLines(
 
     for (const call of message.toolCalls ?? []) {
       const preview = argPreview(call);
-      const plain = `  ⚙ ${call.name}${preview ? ` ${preview}` : ""}`;
-      push(
-        <Text dimColor>
-          {"  ⚙ "}
-          {call.name}
-          {preview ? ` ${preview}` : ""}
-        </Text>,
-        plain,
-      );
+      const [head, ...rest] = summaryLines("  ⚙ ", `${call.name}${preview ? ` ${preview}` : ""}`, Math.max(inner, 16));
+      push(<Text dimColor>{head?.text ?? `  ⚙ ${call.name}`}</Text>, head?.plain ?? `  ⚙ ${call.name}`);
+      for (const piece of rest) push(<Text dimColor>{piece.text}</Text>, piece.plain);
       if (showsToolArgs(verbosity)) {
         const { shown, hidden } = capped(argBody(call));
-        for (const row of shown) {
-          const text = row.length > 0 ? `      ${row}` : "      ";
-          push(<Text dimColor>{text}</Text>, text);
+        for (const piece of detailLines(shown, Math.max(inner - 6, 20))) {
+          push(<Text dimColor>{piece.text}</Text>, piece.plain);
         }
         if (hidden > 0) {
           const text = `      … +${hidden} more arg lines`;

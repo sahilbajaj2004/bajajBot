@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileAtomic } from "../util/atomicWrite.js";
 import { join } from "node:path";
 import { appDir } from "../config/store.js";
 import { sessionExists } from "./history.js";
@@ -25,7 +26,7 @@ export function saveOpenTabs(cwd: string, ids: string[]): void {
   const all = readTabs();
   all[cwd] = ids.slice(-MAX_OPEN_TABS);
   mkdirSync(appDir(), { recursive: true });
-  writeFileSync(tabsPath(), `${JSON.stringify(all, null, 2)}\n`, { mode: 0o600 });
+  writeFileAtomic(tabsPath(), `${JSON.stringify(all, null, 2)}\n`, 0o600);
 }
 
 /**

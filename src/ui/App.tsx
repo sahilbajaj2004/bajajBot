@@ -1,7 +1,7 @@
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeFileSync, existsSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { Config, Snippet } from "../config/types.js";
 import { removeConfig, saveConfig, readConfigAt, configPath, configIsOverridden } from "../config/store.js";
 import { describeReload, providerIdentityChanged } from "../config/diff.js";
@@ -2122,16 +2122,22 @@ export function App({
     const path = configPath();
     const overridden = configIsOverridden();
     if (!existsSync(path)) {
-      flashNote(`✗ reload failed - ${basename(path)} is missing`, 6000);
+      flashNote("✗ reload failed - config file is missing", 6000);
       return;
     }
     let fresh: Config;
     try {
       fresh = readConfigAt(path);
-    } catch {
-      // The detail is in the thrown message; a status bar has room for the
-      // what, not the why.
-      flashNote(`✗ reload failed - ${basename(path)} is not valid JSON`, 6000);
+    } catch (cause) {
+      // The thrown message says why. A status bar is one line and truncates its
+      // own ending, so the short reason goes in the note and the full text goes
+      // in the error line above the composer, which is as wide as the terminal.
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      const usable = reason.includes("not usable");
+      setError(reason);
+      // No filename here: the error line above already names the file, and a
+      // 50-character note gets its own ending truncated off.
+      flashNote(usable ? "✗ reload failed - invalid fields" : "✗ reload failed - not valid JSON", 6000);
       return;
     }
     const before = activeConfig;

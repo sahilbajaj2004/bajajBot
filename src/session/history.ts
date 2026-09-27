@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { writeFileAtomic } from "../util/atomicWrite.js";
 import { appDir } from "../config/store.js";
 import type { Session } from "./types.js";
 
@@ -18,7 +19,8 @@ export function createSession(model: string): Session {
 
 export function saveSession(session: Session): void {
   mkdirSync(sessionsDir(), { recursive: true });
-  writeFileSync(sessionPath(session.id), `${JSON.stringify(session, null, 2)}\n`, { mode: 0o600 });
+  // Atomic: a chat transcript is the one file here that cannot be regenerated.
+  writeFileAtomic(sessionPath(session.id), `${JSON.stringify(session, null, 2)}\n`, 0o600);
 }
 
 export function sessionExists(id: string): boolean {
