@@ -1075,9 +1075,34 @@ export function App({
     lastTurnMutationsRef.current = mutations;
     mainTurnRef.current = false;
     maybeFoldSubagents();
+    if (controller.signal.aborted) {
+      // Interrupted: draining the queue here would fire prompts the user just
+      // cancelled, so hand them back to the input to edit or resend.
+      reclaimQueuedPrompts();
+      return;
+    }
     const next = queueRef.current.shift();
     setQueued(queueRef.current.length);
     if (next) void submit(next);
+  }
+
+  /**
+   * Move everything still queued back into the input box after an interrupt,
+   * so nothing the user typed is silently dropped or sent behind their back.
+   */
+  function reclaimQueuedPrompts(): void {
+    const pending = queueRef.current;
+    queueRef.current = [];
+    setQueued(0);
+    if (pending.length === 0) return;
+    const restored = pending.join("\n");
+    const draft = inputRef.current.trim();
+    const next = draft ? `${draft}\n${restored}` : restored;
+    write(next, next.length);
+    flashNote(
+      `↩ ${pending.length} queued prompt${pending.length === 1 ? "" : "s"} back in the input - edit and resend, or clear it`,
+      4000,
+    );
   }
 
   async function streamRound(

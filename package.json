@@ -14,7 +14,8 @@
     "prepublishOnly": "npm test",
     "stream": "tsx scripts/stream.ts",
     "smoke": "tsx scripts/smoke.tsx",
-    "tabs": "tsx scripts/tabkeys.tsx && tsx scripts/tabmouse.tsx && tsx scripts/tabwrite.tsx && tsx scripts/tabsmoke.tsx && tsx scripts/tabgradient.tsx"
+    "tabs": "tsx scripts/tabkeys.tsx && tsx scripts/tabmouse.tsx && tsx scripts/tabwrite.tsx && tsx scripts/tabsmoke.tsx && tsx scripts/tabgradient.tsx",
+    "queue": "tsx scripts/queueprompts.tsx"
   },
   "engines": {
     "node": ">=18"

@@ -26,7 +26,7 @@ npx bajajbot
 - **File & image mentions** - type `@src/app.ts` to attach code, `@error.png` to attach images for vision models, with Tab autocomplete
 - Risky actions require explicit confirmation with a colorized diff preview; nothing runs without your approval
 - Any model, switchable mid-chat with `/model`; recently-used models at top of picker; ctrl+f toggles ★ favorites (also settable via config)
-- Message queueing while streaming, `/retry`, `/undo`, `/export`, `/search`
+- Message queueing while streaming - and if you interrupt, the queue comes back to your input instead of firing behind your back; plus `/retry`, `/undo`, `/export`, `/search`
 - **Git checkpoints** - every reply auto-snapshots the project to a hidden ref (your branch/index/stash untouched); browse and restore with `/checkpoints`
 - **`/changes`** - every file the agent created/edited/deleted this session
 - **`/commit`** - AI writes a conventional commit message from your working-tree diff; review the suggested message and file stats, press y to commit the whole tree (n regenerates, ⌃e edits the subject, esc cancels)
@@ -191,7 +191,9 @@ f                Pin or unpin ★ the highlighted model inside /model
 ```
 
 While the assistant is streaming you can keep typing - press Enter to queue
-messages; they send automatically when the reply finishes.
+messages; they send automatically when the reply finishes. If you interrupt
+instead (esc ×2), the queue is **not** fired: every queued prompt is handed back
+to the input so you can edit it, resend it, or clear it.
 
 ---
 
