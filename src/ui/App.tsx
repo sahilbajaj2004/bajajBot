@@ -165,6 +165,9 @@ interface TabState {
   scrollOffset: number;
   busy: boolean;
   subagents: SaBatch[];
+  /** Status-bar note raised in this tab, and when it goes stale. */
+  note: string;
+  noteUntil: number;
 }
 
 function LogoutDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
@@ -277,6 +280,8 @@ export function App({
   const uiRef = useRef({ selectable: false });
   const stdoutRef = useRef<{ write: (chunk: string) => unknown; isTTY?: boolean } | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the visible note goes stale, so a parked tab does not revive it. */
+  const noteUntilRef = useRef(0);
   const queueRef = useRef<string[]>([]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -332,6 +337,9 @@ export function App({
 
   function flashNote(text: string, durationMs = 2000): void {
     setNote(text);
+    // Remember when this note goes stale, so switching back to its tab does not
+    // resurrect a message from minutes ago.
+    noteUntilRef.current = Date.now() + durationMs;
     if (noteTimer.current) clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => setNote(""), durationMs);
   }
@@ -1428,6 +1436,8 @@ export function App({
       scrollOffset: scrollOffsetRef.current,
       busy: streamingRef.current !== null,
       subagents: subagentsRef.current,
+      note,
+      noteUntil: noteUntilRef.current,
     });
   }
 
@@ -1461,6 +1471,16 @@ export function App({
     setCost(null);
     setError("");
     setSearch(null);
+    // A note belongs to the chat that raised it, and is dropped once stale so
+    // a tab switch never shows - or revives - another chat's message.
+    const parked = view?.note ?? "";
+    const fresh = parked !== "" && (view?.noteUntil ?? 0) > Date.now();
+    setNote(fresh ? parked : "");
+    noteUntilRef.current = fresh ? (view?.noteUntil ?? 0) : 0;
+    if (noteTimer.current) {
+      clearTimeout(noteTimer.current);
+      noteTimer.current = null;
+    }
   }
 
   function writeTabs(next: string[]): void {
@@ -1497,11 +1517,15 @@ export function App({
       scrollOffset: 0,
       busy: false,
       subagents: [],
+      note: "",
+      noteUntil: 0,
     };
     activateTab(mergeTab(source, loaded), {
       asides: source.asides,
       subagents: source.subagents,
       scrollOffset: source.scrollOffset,
+      note: source.note,
+      noteUntil: source.noteUntil,
     });
   }
 

@@ -227,6 +227,9 @@ rather than pushing others off-screen.
   instead of replacing what you were looking at, so nothing is lost.
 - Each tab keeps its own scrollback, plan board, side questions, and subagent
   chips - switching away and back leaves everything as you left it.
+- Status-bar notes belong to the chat that raised them: "✓ committed" in one
+  tab never shows up in another, and a note that has already timed out is not
+  revived when you come back.
 - Tabs are remembered per project in `~/.bajajbot/tabs.json` (newest 8), so
   reopening bajajbot in the same directory restores your workspace.
 - A turn in flight owns the session it started in, so opening, switching, and
