@@ -22,7 +22,7 @@ npx bajajbot
 - **Done notifications** - replies that take 3+ seconds ring the terminal bell and pop a desktop notification (OSC 9/777, tmux-aware), so you can switch windows while it works
 - **`/btw` side questions** - ask "btw, why?" mid-task and get an instant aside without derailing the running agent; the status bar teaches context-aware command hints as you go
 - **`/compare` A/B** - fire one question at two models, see answers side by side, press 1 or 2 to keep the winner into the chat history
-- **`/subagent` parallel research** - fan out background mini-agents (`/subagent summarize TODO.md | check node version | find bugs`) that investigate while you keep chatting; live status chips below the chat, esc cancels the batch, finished reports fold into the chat as boxed blocks
+- **`/subagent` parallel research** - fan out background mini-agents (`/subagent summarize TODO.md | check node version | find bugs`) that investigate while you keep chatting; live status chips below the chat, esc cancels the batch, finished reports fold into the chat as boxed blocks. Each subagent can run on its own model - `--model` for the whole batch, `model::` in front of a single task to pick one just for it - and the chip header and the folded report both name the model(s) so you always know which answer came from where
 - **File & image mentions** - type `@src/app.ts` to attach code, `@error.png` to attach images for vision models, with Tab autocomplete
 - Risky actions require explicit confirmation with a colorized diff preview; nothing runs without your approval
 - Any model, switchable mid-chat with `/model`; recently-used models at top of picker; ctrl+f toggles ★ favorites (also settable via config)
@@ -31,6 +31,9 @@ npx bajajbot
 - **`/changes`** - every file the agent created/edited/deleted this session
 - **`/commit`** - AI writes a conventional commit message from your working-tree diff; review the suggested message and file stats, press y to commit the whole tree (n regenerates, ⌃e edits the subject, esc cancels)
 - **`/theme`** - six UI colorways (ember, ocean, matrix, rose, violet, mono), switchable live and persisted
+- **`/reload`** - edit `config.json` in another window, run `/reload`, and the running session picks it up: theme, routes, fallback chain, system prompt, context budget, spend guard, and profiles all apply from the next turn. The note tells you what changed, and a broken file is reported without dropping the config you already had
+- **`/verbose`** - the transcript shows one line per tool call by default; cycle up to see every argument the agent passed, and then whole tool results, when you want to check its work instead of its summary
+- **`/update`** - upgrade from inside the chat: checks npm, installs a newer bajajbot, and shows npm's own progress with a spinner and elapsed time instead of leaving you at a prompt wondering whether it worked
 - **Auto-compaction** - long chats are summarized automatically instead of hitting the model's limit, with a live context meter in the status bar
 - **Rate-limit handling** - automatic retries with backoff, honors `Retry-After`, plain-English error messages
 - **Auto-failover chain** - on a rate limit, 5xx, or unreachable provider the turn automatically retries on each entry in config `fallbackModels`; manage the chain interactively with `/fallback` (picker: arrow keys + enter, type to filter, ctrl+d removes last) or set `fallbackModels` directly
@@ -125,6 +128,7 @@ saving. Configuration lives at `~/.bajajbot/config.json`.
 | `fallbackModels` | comma-separated `model-id` \| `profile:<name>` | Auto-failover chain for the current turn when the provider rate-limits, 5xxs, or is unreachable. A `profile:` entry switches provider/endpoint (e.g. your local Ollama). Order matters - first usable entry is tried first |
 | `checkpointLimit` | integer ≥ 2 | Max git snapshots kept per project; when full, the chain restarts and old ones are reclaimed by git GC (default 300) |
 | `theme` | theme name | UI colorway - one of `ember` (default), `ocean`, `matrix`, `rose`, `violet`, `mono`. Also switchable live with `/theme` |
+| `verbosity` | `quiet`, `normal`, or `verbose` | How much of each tool call the transcript draws: one line each (default), plus the full arguments (`normal`), plus whole tool results (`verbose`). Switchable live with `/verbose` |
 | `webSearch` | object | Backend for the agent's `web_search` tool: `{ "provider": "duckduckgo" \| "brave" \| "tavily" \| "searxng", "apiKey": "...", "searxUrl": "..." }` - default is keyless DuckDuckGo; Brave/Tavily need a free API key, SearXNG your instance URL |
 
 Example:
@@ -133,6 +137,7 @@ Example:
 bajajbot config set favoriteModels "openai/gpt-oss-20b:free, anthropic/claude-sonnet-4.5"
 bajajbot config set spendLimitUsd 5
 bajajbot config set theme ocean
+bajajbot config set verbosity verbose
 bajajbot config unset temperature
 ```
 
@@ -146,11 +151,14 @@ bajajbot config unset temperature
 | `/changes` | - | List files the agent created/edited/deleted this session (A/M/D color-coded) |
 | `/commit` | - | Round up the whole working tree (`git add -A`), model writes a conventional message, press y to commit (n regenerates, ⌃e edits the subject, esc cancels). Requires `git user.name`/`user.email` |
 | `/theme` | - | Pick a UI colorway (arrow keys, live preview swatches); saved to your config |
+| `/reload` | - | Re-read the config file from disk and apply it without restarting; reports which keys changed |
+| `/verbose` | - | Cycle transcript detail: `quiet` (one line per tool call and result) → `normal` (also the full arguments) → `verbose` (also whole results). Saved to your config |
+| `/update` | - | Check npm for a newer bajajbot and install it, with live progress; restart afterwards to run it |
 | `/usage` | - | Requests, tokens and estimated cost across all saved chats, with per-model breakdown |
 | `/schedule` | - | List scheduled prompts · `add <name> "<cron: minute hour dom month dow>" "<prompt>"`, `rm <name>`, `run <name>` |
 | `/btw <question>` | required | Instant side question - answered in 1–2 sentences even mid-task, never enters the chat history |
 | `/compare <question>` | required | Ask two models the same question side by side - pick the winner to keep (1 = A, 2 = B, esc = discard both) |
-| `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents - any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat |
+| `/subagent <task1>, <task2>, …` | required | Launch parallel background research agents - any number of tasks separated by commas, pipes, or new lines; live chips while they run, single esc cancels, finished reports fold into the chat. Add `--model <id>` to run the batch on another model, or prefix one task with `<id>::` to override just that one |
 | `/fallback` \| `/fallback <id>` \| `/fallback clear` | optional | Interactive picker for the auto-failover chain (models + saved profiles; enter adds, ctrl+d removes last, esc done), or add a single model ID directly, or clear the chain |
 | `/route` \| `/route add "pat" <model>` \| `/route clear` | optional | Smart routing picker: toggle rules on/off, ⌃d deletes, a adds (pat = keyword or `/regex/`, then pick the model/profile). First match routes that turn; `add`/`clear` work without the picker |
 | `/sn` \| `/sn <name>` \| `/sn save <name>` \| `/sn add <name> <text>` \| `/sn rm <name>` | optional | Prompt snippets: picker inserts into your input (type filters, ⌃d deletes, a adds), `<name>` inserts, `save` stores your last sent prompt, `add` stores inline text (`\n` = newline), `rm` removes one |
@@ -383,8 +391,37 @@ Free models throttle fast. On 429/5xx BajajBot retries automatically (backoff
 back in plain English: bad key → "run `bajajbot config init`", out of credit
 (402), unknown model (404), etc.
 
-## Copying messages
+## Transcript verbosity
 
+Every tool call and every tool result is stored in full; `/verbose` decides how
+much of that the chat draws. Run it to cycle, or set it once with
+`bajajbot config set verbosity <level>`:
+
+| Level | What the transcript shows |
+| --- | --- |
+| `quiet` (default) | `⚙ read src/parser.ts` and `↳ ✓ const alpha = 1;` - one line each |
+| `normal` | the above, plus every argument the agent passed, pretty-printed |
+| `verbose` | the above, plus the whole result body instead of its first line |
+
+```text
+  ⚙ read src/parser.ts              ��� quiet
+      {                             ��� normal and up
+        "path": "src/parser.ts",
+        "limit": 40
+      }
+  ↳ ✓ const alpha = 1;              ��� always
+      const beta = 2;               ��� verbose
+      const gamma = 3;
+      return { alpha, beta, gamma };
+```
+
+The level only ever *adds* lines, so it never changes what gets copied, sent to
+the model, or written to the session file - only how much of it you look at.
+Expanded detail is capped at 60 lines per call, and the cap says how much was
+left out and where to find the rest (`/export`). The level is saved to your
+config, so it survives a restart.
+
+## Copying messages
 - **Drag with the left mouse button** over chat text - highlights while dragging, copies on release (OSC 52, works over SSH; falls back to `pbcopy`/`wl-copy`/`xclip`/`clip`)
 - `/copy` copies the last assistant reply without touching the mouse
 - Hold **Shift** while dragging for your terminal's native selection
@@ -414,6 +451,23 @@ Everything lives under `~/.bajajbot/` (Windows: `%USERPROFILE%\.bajajbot`):
 
 Nothing is synced anywhere; messages go only to the endpoint you configure.
 
+### `BAJAJBOT_CONFIG` - a config file somewhere else
+
+Set `BAJAJBOT_CONFIG` to read (and write) the config from any path instead of
+`~/.bajajbot/config.json`:
+
+```bash
+BAJAJBOT_CONFIG=./team.json bajajbot          # one repo, one shared config
+BAJAJBOT_CONFIG=/etc/bajajbot/prod.json bajajbot
+```
+
+Everything else stays where it is - sessions, tabs, and schedules still live in
+`~/.bajajbot/`, so pointing at another config never moves your chat history.
+Edit the file while a session is open and run `/reload` to adopt it: the note
+names the file (`(env)` when it came from `BAJAJBOT_CONFIG`) and lists what
+changed. A file that is missing or not valid JSON is reported and ignored, so a
+half-finished edit costs you a keystroke rather than the session.
+
 ## Troubleshooting
 
 - **"API key rejected (401)"** - run `bajajbot config init` and paste a fresh key
@@ -424,7 +478,27 @@ Nothing is synced anywhere; messages go only to the endpoint you configure.
 
 ## Upgrading
 
-Installed from npm:
+**`/update`** does it from inside the chat: it asks npm for the latest version,
+installs it if it is newer, and shows what npm is doing while it works.
+
+```text
+  ⬆ update 3.0.0 → 3.1.0
+  ⠹ npm http fetch GET 200 registry.npmjs.org/bajajbot 1.2s · 2.4s
+  ✓ installed - restart bajajbot to run it
+```
+
+The block stays in the transcript, so you can scroll back to what npm said. A
+failed install names the reason - a permissions problem suggests `sudo`, a
+missing npm suggests checking `PATH`, a bad version or an unreachable registry
+say so - and never reports success it did not achieve. The install is global
+(`npm install -g bajajbot@<version>`) and bounded to five minutes.
+
+The running process keeps executing the old code, so restart afterwards. A
+successful update also refreshes the daily check marker, so you are not told
+about the version you just installed. While an update is running, a second
+`/update` is refused rather than starting a second install.
+
+By hand:
 
 ```sh
 npm update -g bajajbot
@@ -433,7 +507,7 @@ npx bajajbot@latest              # always newest without installing
 ```
 
 BajajBot also checks npm once a day and prints a one-line notice at startup
-when a newer version exists.
+when a newer version exists - that check only *tells* you; `/update` installs.
 
 From a local clone:
 

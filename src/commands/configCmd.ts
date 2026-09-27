@@ -8,6 +8,7 @@ import { configExists, loadConfig, saveConfig, removeConfig } from "../config/st
 import type { Config } from "../config/types.js";
 import { normalizeBaseUrl } from "../util/url.js";
 import { applyTheme, THEMES } from "../ui/theme.js";
+import { VERBOSITY_HELP, VERBOSITY_LEVELS, normalizeVerbosity } from "../ui/verbosity.js";
 import { SetupWizard } from "../ui/Setup.js";
 
 function maskApiKey(apiKey: string): string {
@@ -30,7 +31,7 @@ export function registerConfigCommands(program: Command): void {
 
   config
     .command("set <key> <value...>")
-    .description("Set temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit or theme")
+    .description("Set temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme or verbosity")
     .action(async (key: string, value: string[]) => {
       const current = await ensureConfig();
       const text = value.join(" ").trim();
@@ -104,19 +105,28 @@ export function registerConfigCommands(program: Command): void {
         }
         saveConfig({ ...current, theme: text });
         console.log(`theme = ${text}`);
+      } else if (key === "verbosity") {
+        const level = normalizeVerbosity(text);
+        if (text.trim().toLowerCase() !== level) {
+          console.log(`Unknown verbosity "${text}". Available: ${VERBOSITY_LEVELS.join(", ")}`);
+          process.exitCode = 1;
+          return;
+        }
+        saveConfig({ ...current, verbosity: level });
+        console.log(`verbosity = ${level} (${VERBOSITY_HELP[level]})`);
       } else {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme`);
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme, verbosity`);
         process.exitCode = 1;
       }
     });
 
   config
     .command("unset <key>")
-    .description("Clear temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit or theme")
+    .description("Clear temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme or verbosity")
     .action(async (key: string) => {
       const current = await ensureConfig();
-      if (!["temperature", "maxTokens", "systemPrompt", "contextTokens", "spendLimitUsd", "favoriteModels", "checkpointLimit", "theme"].includes(key)) {
-        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme`);
+      if (!["temperature", "maxTokens", "systemPrompt", "contextTokens", "spendLimitUsd", "favoriteModels", "checkpointLimit", "theme", "verbosity"].includes(key)) {
+        console.log(`Unknown key "${key}". Supported: temperature, maxTokens, systemPrompt, contextTokens, spendLimitUsd, favoriteModels, checkpointLimit, theme, verbosity`);
         process.exitCode = 1;
         return;
       }

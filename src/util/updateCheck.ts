@@ -1,5 +1,5 @@
-import { existsSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { appDir } from "../config/store.js";
 
 const REGISTRY_URL = "https://registry.npmjs.org/bajajbot/latest";
@@ -36,14 +36,23 @@ export async function checkForUpdate(
     const data = (await response.json()) as { version?: unknown };
     const latest = typeof data.version === "string" ? data.version : "";
     if (!latest || !isNewerVersion(currentVersion, latest)) return null;
-    try {
-      writeFileSync(marker, `${new Date().toISOString()} latest=${latest}\n`);
-    } catch {
-      // marker is best-effort
-    }
+    markUpdateChecked(latest, marker);
     return latest;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Record that a check just happened. Called after a successful `/update` too,
+ * so installing does not immediately trip the startup banner.
+ */
+export function markUpdateChecked(latest: string, marker: string = markerPath()): void {
+  try {
+    mkdirSync(dirname(marker), { recursive: true });
+    writeFileSync(marker, `${new Date().toISOString()} latest=${latest}\n`);
+  } catch {
+    // marker is best-effort
   }
 }
 

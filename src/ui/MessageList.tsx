@@ -4,6 +4,12 @@ import type { Message } from "../session/types.js";
 import { theme } from "./theme.js";
 import { renderMarkdown } from "./Markdown.js";
 import { segmentLine } from "./select.js";
+import {
+  MAX_DETAIL_LINES,
+  showsToolArgs,
+  showsToolOutput,
+  type Verbosity,
+} from "./verbosity.js";
 
 export interface ChatLine {
   key: string;
@@ -61,6 +67,21 @@ function argPreview(call: NonNullable<Message["toolCalls"]>[number]): string {
   }
 }
 
+/** The call's arguments, pretty-printed when they parse and raw when they don't. */
+function argBody(call: NonNullable<Message["toolCalls"]>[number]): string[] {
+  try {
+    return JSON.stringify(JSON.parse(call.args || "{}"), null, 2).split("\n");
+  } catch {
+    return (call.args || "").split("\n");
+  }
+}
+
+/** Cap detail lines, saying plainly how many were left out. */
+function capped(lines: string[]): { shown: string[]; hidden: number } {
+  if (lines.length <= MAX_DETAIL_LINES) return { shown: lines, hidden: 0 };
+  return { shown: lines.slice(0, MAX_DETAIL_LINES), hidden: lines.length - MAX_DETAIL_LINES };
+}
+
 /**
  * Top/bottom border strings for a chat bubble that exactly fit the content
  * width. Labels (e.g. "you") ride the top border when they fit; otherwise the
@@ -79,8 +100,17 @@ function bubbleBox(contentWidth: number, label: string): { top: string; bottom: 
   };
 }
 
-/** Build the flat scrollback of single-line blocks the chat viewport renders from. */
-export function buildChatLines(messages: Message[], columns: number): ChatLine[] {
+/**
+ * Build the flat scrollback of single-line blocks the chat viewport renders from.
+ *
+ * `verbosity` only ever adds lines; at the default "quiet" this is exactly the
+ * one-line-per-call, one-line-per-result transcript.
+ */
+export function buildChatLines(
+  messages: Message[],
+  columns: number,
+  verbosity: Verbosity = "quiet",
+): ChatLine[] {
   const inner = Math.max(columns - 6, 16);
   const lines: ChatLine[] = [];
   let seq = 0;
@@ -136,7 +166,9 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
     if (message.role === "tool") {
       const failed =
         message.content.startsWith("Error:") || message.content === "User denied this action.";
-      const first = message.content.split("\n").find((entry) => entry.trim().length > 0) ?? "(no output)";
+      const rows = message.content.split("\n");
+      const headIndex = rows.findIndex((entry) => entry.trim().length > 0);
+      const first = headIndex >= 0 ? (rows[headIndex] ?? "") : "(no output)";
       const plain = `  ↳ ${failed ? "✗" : "✓"} ${first.slice(0, 100)}`;
       push(
         <Text dimColor>
@@ -145,6 +177,20 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
         </Text>,
         plain,
       );
+      // The head line is already shown above, so only the rest of the body is
+      // expanded - no duplicated first line, and a one-line result stays a
+      // single line even at verbose.
+      if (showsToolOutput(verbosity) && headIndex >= 0 && rows.length > headIndex + 1) {
+        const { shown, hidden } = capped(rows.slice(headIndex + 1));
+        for (const row of shown) {
+          const text = row.length > 0 ? `      ${row}` : "      ";
+          push(<Text dimColor>{text}</Text>, text);
+        }
+        if (hidden > 0) {
+          const text = `      … +${hidden} more lines - /export for the full text`;
+          push(<Text dimColor>{text}</Text>, text);
+        }
+      }
       return;
     }
 
@@ -159,6 +205,17 @@ export function buildChatLines(messages: Message[], columns: number): ChatLine[]
         </Text>,
         plain,
       );
+      if (showsToolArgs(verbosity)) {
+        const { shown, hidden } = capped(argBody(call));
+        for (const row of shown) {
+          const text = row.length > 0 ? `      ${row}` : "      ";
+          push(<Text dimColor>{text}</Text>, text);
+        }
+        if (hidden > 0) {
+          const text = `      … +${hidden} more arg lines`;
+          push(<Text dimColor>{text}</Text>, text);
+        }
+      }
     }
     if (message.content) {
       for (const line of renderMarkdown(message.content, Math.max(columns - 4, 20)).split("\n")) {

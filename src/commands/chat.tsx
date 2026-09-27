@@ -20,8 +20,10 @@ export async function startChat(session?: Session, initialPrompt?: string, versi
   const config = loadConfig();
   applyTheme(config.theme);
   if (version) {
+    // A passive hint only: /update is what actually installs, and it reports
+    // progress. Writing to the console here would land outside Ink's frame.
     void checkForUpdate(version).then((latest) => {
-      if (latest) console.log(`⬆ bajajbot v${latest} available - npm install -g bajajbot@latest`);
+      if (latest) console.log(`⬆ bajajbot v${latest} available - run /update to install it`);
     });
   }
   const mouse = createMouseStdin(process.stdin as NodeJS.ReadStream & { isTTY?: boolean });
@@ -35,6 +37,7 @@ export async function startChat(session?: Session, initialPrompt?: string, versi
         session: session ?? createSession(config.defaultModel),
         mouse,
         initialPrompt,
+        version,
       }),
       { stdin: mouse.stream as unknown as NodeJS.ReadStream, exitOnCtrlC: false },
     ).waitUntilExit()) as string | ExitSummary | undefined;

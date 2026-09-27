@@ -44,7 +44,7 @@ export default function Nav() {
           <span className="text-ember">❯</span>
           <span>bajajbot</span>
           <span className="hidden text-xs font-normal text-faint sm:inline">
-            v1.2.0
+            v3,0,0
           </span>
         </a>
 

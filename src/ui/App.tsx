@@ -1,9 +1,13 @@
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { writeFileSync, existsSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import type { Config, Snippet } from "../config/types.js";
-import { removeConfig, saveConfig } from "../config/store.js";
+import { removeConfig, saveConfig, readConfigAt, configPath, configIsOverridden } from "../config/store.js";
+import { describeReload, providerIdentityChanged } from "../config/diff.js";
+import { VERBOSITY_HELP, nextVerbosity, normalizeVerbosity } from "./verbosity.js";
+import { packageVersion } from "../util/pkgVersion.js";
+import { describeInstallFailure, npmUpdater, shouldInstall, type Updater } from "../util/updater.js";
 import { completeChat, isAbortError, isRetryableError, streamChat, type Usage } from "../provider/client.js";
 import { estimateCost, fetchModels, type ModelInfo } from "../provider/models.js";
 import { toMarkdown } from "../session/export.js";
@@ -12,6 +16,7 @@ import { loadAllSessions } from "../session/history.js";
 import { initialTabOrder, saveOpenTabs } from "../session/tabs.js";
 import { addUsage, aggregateUsage, emptyUsage } from "../session/usage.js";
 import { deriveSessionTitle } from "./title.js";
+import { describeBatchModel, parseSubagentArgs } from "./subagentArgs.js";
 import { createSession, forkSession, listSessions, loadSession, saveSession } from "../session/history.js";
 import { startScheduler, stopScheduler } from "../schedule/scheduler.js";
 import { addSchedule, loadSchedules, parseQuotedArgs, removeSchedule } from "../schedule/store.js";
@@ -107,6 +112,8 @@ interface SaUnit {
   live: string;
   result?: string;
   ms?: number;
+  /** Model this unit runs on - may differ from the batch's. */
+  model: string;
 }
 
 /** A parallel batch of /subagent tasks - a single esc cancels the whole batch. */
@@ -115,6 +122,17 @@ interface SaBatch {
   model: string;
   startIndex: number;
   units: SaUnit[];
+}
+
+/** One `/update` run: what it is doing, and how long it has been doing it. */
+interface UpdateJob {
+  stage: "checking" | "up-to-date" | "installing" | "done" | "failed";
+  from: string;
+  to?: string;
+  detail: string;
+  startedAt: number;
+  /** Guards against a second /update while one is in flight. */
+  running: boolean;
 }
 
 /** A finished batch queued to be folded into the saved session. */
@@ -203,11 +221,17 @@ export function App({
   session: initialSession,
   mouse,
   initialPrompt,
+  version,
+  updater = npmUpdater,
 }: {
   config: Config;
   session: Session;
   mouse?: MouseStdin;
   initialPrompt?: string;
+  /** Our own version, so /update can say what it is updating from. */
+  version?: string;
+  /** Seam for tests; production always uses npm. */
+  updater?: Updater;
 }) {
   const [activeConfig, setActiveConfig] = useState<Config>(config);
   const configRef = useRef(config);
@@ -240,6 +264,10 @@ export function App({
   const [search, setSearch] = useState<{ query: string; matches: SearchMatch[] } | null>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [blink, setBlink] = useState(0);
+  /** A `/update` run, drawn in the transcript while npm works. */
+  const [updateJob, setUpdateJob] = useState<UpdateJob | null>(null);
+  const updateRef = useRef<UpdateJob | null>(null);
+  updateRef.current = updateJob;
   const [selection, setSelection] = useState<{ ax: number; ay: number; bx: number; by: number } | null>(null);
   const [note, setNote] = useState("");
   const [queued, setQueued] = useState(0);
@@ -256,7 +284,9 @@ export function App({
   const subAbortRef = useRef<AbortController | null>(null);
   const subRunningRef = useRef(0);
   const pendingCountRef = useRef<Map<number, number>>(new Map());
-  const saMetaRef = useRef<Map<number, { model: string; tasks: string[]; startIndex: number }>>(new Map());
+  const saMetaRef = useRef<Map<number, { model: string; tasks: { task: string; model: string }[]; startIndex: number }>>(
+    new Map(),
+  );
   const saResultsRef = useRef<Map<string, { status: SaUnit["status"]; result: string; ms: number; tokens: { prompt: number; completion: number }; costUsd: number }>>(new Map());
   const saMutationsRef = useRef<FileMutation[]>([]);
   const pendingSaFoldRef = useRef<SaFold[]>([]);
@@ -521,10 +551,10 @@ export function App({
   useEffect(() => setAutoSelected(0), [input]);
 
   useEffect(() => {
-    if (!busy && !saActive) return;
+    if (!busy && !saActive && !updateJob?.running) return;
     const id = setInterval(() => setBlink((value) => value + 1), 120);
     return () => clearInterval(id);
-  }, [busy, saActive]);
+  }, [busy, saActive, updateJob?.running]);
 
   const firstPrompt = completed.find((message) => message.role === "user")?.content;
   useEffect(() => {
@@ -1160,26 +1190,36 @@ export function App({
   }
 
   /** "/subagent" - launch parallel background mini-agents (tasks split on "|"). */
-  function startSubagents(tasks: string[]): void {
+  function startSubagents(tasks: { task: string; model?: string }[], batchModel?: string): void {
     write("", 0);
-    rememberMessage(`/subagent ${tasks.join(" | ")}`);
+    rememberMessage(`/subagent ${tasks.map((entry) => entry.task).join(" | ")}`);
     const id = ++subSeqRef.current;
     const controller = new AbortController();
     subAbortRef.current = controller;
-    const model = sessionRef.current.model;
+    const model = batchModel ?? sessionRef.current.model;
     const startIndex = sessionRef.current.messages.length;
-    saMetaRef.current.set(id, { model, tasks, startIndex });
+    saMetaRef.current.set(id, {
+      model,
+      tasks: tasks.map((entry) => ({ task: entry.task, model: entry.model ?? model })),
+      startIndex,
+    });
     pendingCountRef.current.set(id, tasks.length);
-    const units: SaUnit[] = tasks.map((task, index) => ({
+    const units: SaUnit[] = tasks.map((entry, index) => ({
       key: `${id}-${index}`,
-      task,
+      task: entry.task,
       status: "running",
       live: "…",
+      model: entry.model ?? model,
     }));
     setSubagents((previous) => [...previous, { id, model, startIndex, units }]);
     subRunningRef.current += tasks.length;
-    for (const unit of units) void runSaUnit(id, unit.key, unit.task, controller, model);
-    flashNote(`⟳ ${tasks.length} subagent${tasks.length === 1 ? "" : "s"} started - esc cancels`);
+    for (const unit of units) void runSaUnit(id, unit.key, unit.task, controller, unit.model);
+    const mixed = new Set(units.map((unit) => unit.model)).size > 1;
+    flashNote(
+      `⟳ ${tasks.length} subagent${tasks.length === 1 ? "" : "s"} started on ${
+        mixed ? "mixed models" : model
+      } - esc cancels`,
+    );
   }
 
   /** Run one self-contained subagent loop: private buffer, own abort, shared confirm queue. */
@@ -1315,21 +1355,28 @@ export function App({
     const meta = saMetaRef.current.get(batchId);
     subAbortRef.current = null;
     if (!meta) return;
-    const lines = [`⟳ subagent report · ${meta.tasks.length} task${meta.tasks.length === 1 ? "" : "s"} · ${meta.model}`];
+    const distinct = new Set(meta.tasks.map((entry) => entry.model));
+    const lines = [
+      `⟳ subagent report · ${meta.tasks.length} task${meta.tasks.length === 1 ? "" : "s"} · ${describeBatchModel(
+        meta.tasks.map((entry) => entry.model),
+        meta.model,
+      )}`,
+    ];
     let prompt = 0;
     let completion = 0;
     let cost = 0;
     let slowest = 0;
-    meta.tasks.forEach((task, index) => {
+    meta.tasks.forEach((entry, index) => {
       const res = saResultsRef.current.get(`${batchId}-${index}`);
       const mark = res?.status === "done" ? "✓" : res?.status === "cancelled" ? "−" : "✗";
+      const tag = distinct.size > 1 ? ` @${entry.model}` : "";
       const suffix =
         res?.status === "done"
           ? ` · ${((res.ms ?? 0) / 1000).toFixed(1)}s`
           : res?.status === "cancelled"
             ? " · cancelled"
             : " · failed";
-      lines.push(`  ${mark} [${index + 1}] ${task}${suffix}`);
+      lines.push(`  ${mark} [${index + 1}] ${entry.task}${tag}${suffix}`);
       if (res) {
         lines.push(res.result.split("\n").map((line) => `      ${line}`).join("\n"));
         prompt += res.tokens.prompt;
@@ -1699,6 +1746,21 @@ export function App({
       case "/theme":
         openOverlay("theme");
         break;
+      case "/update":
+        void runUpdate();
+        break;
+      case "/verbose": {        // `config set verbosity` covers the persistent case; this is the fast
+        // one, and it lands in the file so it survives a restart.
+        const level = nextVerbosity(normalizeVerbosity(activeConfig.verbosity));
+        const next = { ...activeConfig, verbosity: level };
+        saveConfig(next);
+        setActiveConfig(next);
+        flashNote(`✓ transcript verbosity: ${level} - ${VERBOSITY_HELP[level]}`, 4000);
+        break;
+      }
+      case "/reload":
+        runReload();
+        break;
       case "/memory":
         openOverlay("memory");
         break;
@@ -1991,16 +2053,14 @@ export function App({
           flashNote("⚠ subagents already running - wait or press esc");
           break;
         }
-        const tasks = trimmed
-          .replace(/^\/subagent\b\s*/i, "")
-          .split(/\s*[|,]\s*|\n+/)
-          .map((task) => task.trim())
-          .filter(Boolean);
-        if (tasks.length === 0) {
-          setError("Usage: /subagent <task>, <task2> - any number of tasks, separated by commas, pipes, or new lines. Each runs as its own parallel agent.");
+        const parsed = parseSubagentArgs(trimmed.replace(/^\/subagent\b\s*/i, ""));
+        if (parsed.tasks.length === 0) {
+          setError(
+            "Usage: /subagent <task>, <task2> - parallel agents, one per task. Add --model <id> to run the batch on another model, or prefix a single task with <id>:: to pick one just for it.",
+          );
           break;
         }
-        startSubagents(tasks);
+        startSubagents(parsed.tasks, parsed.model);
         break;
       }
       case "/compare": {
@@ -2047,6 +2107,98 @@ export function App({
         openOverlay("logout");
         break;
     }
+  }
+
+  /**
+   * Re-read the config file and adopt it in place. A reload that reports
+   * nothing is a reload you cannot trust, so the note names the file it read
+   * and what changed - and a bad file leaves the working config alone.
+   */
+  function runReload(): void {
+    if (turnRunning()) {
+      flashNote("⚠ finish the current turn first");
+      return;
+    }
+    const path = configPath();
+    const overridden = configIsOverridden();
+    if (!existsSync(path)) {
+      flashNote(`✗ reload failed - ${basename(path)} is missing`, 6000);
+      return;
+    }
+    let fresh: Config;
+    try {
+      fresh = readConfigAt(path);
+    } catch {
+      // The detail is in the thrown message; a status bar has room for the
+      // what, not the why.
+      flashNote(`✗ reload failed - ${basename(path)} is not valid JSON`, 6000);
+      return;
+    }
+    const before = activeConfig;
+    const upstreamChanged = providerIdentityChanged(before, fresh);
+    setActiveConfig(fresh);
+    if (before.theme !== fresh.theme) applyTheme(fresh.theme);
+    // Cost tables are fetched per upstream, so a new endpoint invalidates them.
+    if (upstreamChanged) pricingRef.current = null;
+    // Name the file only as a marker: the status bar is narrow, and "(env)" is
+    // what tells the user the reload read BAJAJBOT_CONFIG rather than the usual
+    // file. A path here would push the change list off the end.
+    let message = describeReload(before, fresh, overridden ? "(env)" : undefined);
+    // The chat keeps its own model on purpose; say so when the file moved on,
+    // because the next turn may be talking to a different upstream.
+    const known = new Set([
+      fresh.defaultModel,
+      ...Object.values(fresh.profiles ?? {}).map((profile) => profile.defaultModel),
+    ]);
+    if (upstreamChanged && !known.has(sessionRef.current.model)) {
+      message += ` · ${sessionRef.current.model} not in it`;
+    }
+    flashNote(message, 4000);
+  }
+
+  /**
+   * Check npm for a newer bajajbot and install it, drawing progress in the
+   * transcript. The install is a global npm run, so it needs neither the model
+   * nor the network to be otherwise healthy - and it must never be able to take
+   * the chat down with it, so every failure is a reported failure.
+   */
+  async function runUpdate(): Promise<void> {
+    if (updateRef.current?.running) {
+      flashNote("⚠ an update is already running");
+      return;
+    }
+    const from = version ?? packageVersion();
+    const startedAt = Date.now();
+    const patch = (next: Omit<UpdateJob, "from" | "startedAt">): void =>
+      setUpdateJob({ ...next, from, startedAt });
+    patch({ stage: "checking", detail: "asking npm for the latest version", running: true });
+    const latest = await updater.latest();
+    if (!latest) {
+      patch({ stage: "failed", detail: "the npm registry could not be reached", running: false });
+      // Notes stay short and the block below carries the detail: a status bar is
+      // one line, and a long note truncates away its own ending.
+      flashNote("✗ could not reach the npm registry", 6000);
+      return;
+    }
+    if (!shouldInstall(from, latest)) {
+      patch({ stage: "up-to-date", detail: `v${from} is the latest published`, running: false });
+      flashNote(`✓ v${from} is up to date`, 4000);
+      return;
+    }
+    patch({ stage: "installing", to: latest, detail: "starting npm install", running: true });
+    const result = await updater.install(latest, (detail) =>
+      setUpdateJob((previous) => (previous && previous.running ? { ...previous, detail } : previous)),
+    );
+    if (result.ok) {
+      // Do not let the startup banner re-nag about the version just installed.
+      updater.markChecked(latest);
+      patch({ stage: "done", to: latest, detail: "installed - restart bajajbot to run it", running: false });
+      flashNote(`✓ v${latest} installed - restart to use`, 8000);
+      return;
+    }
+    const reason = describeInstallFailure(result);
+    patch({ stage: "failed", to: latest, detail: reason, running: false });
+    flashNote(`✗ update to v${latest} failed`, 8000);
   }
 
   function applyProfile(name?: string): void {
@@ -2116,7 +2268,7 @@ export function App({
       streaming !== null && streaming.length > 0
         ? [...completed, { role: "assistant", content: streaming, timestamp: new Date().toISOString() }]
         : completed;
-    const lines = buildChatLines(messages, columns);
+    const lines = buildChatLines(messages, columns, normalizeVerbosity(activeConfig.verbosity));
     asides.forEach((entry, asideIndex) => {
       const base = `a${entry.id}`;
       if (entry.kind === "map") {
@@ -2223,7 +2375,13 @@ export function App({
     subagents.forEach((batch, batchIndex) => {
       const base = `sa${batch.id}`;
       const running = batch.units.some((unit) => unit.status === "running");
-      const header = `  ⟳ subagents · ${batch.units.map((unit) => unit.task).join(" | ")}${running ? " · esc cancels" : ""}`;
+      // Name the model once for a uniform batch; call out a mix so the reader
+      // knows the per-unit tags below are doing real work.
+      const distinct = new Set(batch.units.map((unit) => unit.model));
+      const batchModel = describeBatchModel(batch.units.map((unit) => unit.model), batch.model);
+      const header = `  ⟳ subagents · ${batchModel} · ${batch.units
+        .map((unit) => unit.task)
+        .join(" | ")}${running ? " · esc cancels" : ""}`;
       lines.push({ key: `${base}q`, node: <Text color={theme.accent}>{header}</Text>, text: header, messageIndex: -1 });
       batch.units.forEach((unit, unitIndex) => {
         const mark =
@@ -2240,15 +2398,45 @@ export function App({
             : unit.status === "done"
               ? `done · ${((unit.ms ?? 0) / 1000).toFixed(1)}s`
               : unit.status;
-        const line = `  ${mark} [${unitIndex + 1}] ${unit.task} - ${label}`;
+        // A uniform batch already named its model in the header. In a mixed one,
+        // every unit says which it is - including the one on the batch model, so
+        // the chip and the folded report read the same way.
+        const tag = distinct.size > 1 ? ` @${unit.model}` : "";
+        const line = `  ${mark} [${unitIndex + 1}] ${unit.task}${tag} - ${label}`;
         lines.push({ key: `${base}u${unitIndex}`, node: <Text dimColor>{line}</Text>, text: line, messageIndex: -1 });
       });
       if (batchIndex < subagents.length - 1) {
         lines.push({ key: `${base}s`, node: <Text> </Text>, text: " ", messageIndex: -1 });
       }
     });
+    if (updateJob) {
+      const elapsed = ((Date.now() - updateJob.startedAt) / 1000).toFixed(1);
+      const mark =
+        updateJob.stage === "done"
+          ? "✓"
+          : updateJob.stage === "failed"
+            ? "✗"
+            : updateJob.stage === "up-to-date"
+              ? "✓"
+              : SPINNER_FRAMES[blink % SPINNER_FRAMES.length];
+      const title = `  ⬆ update ${updateJob.from}${updateJob.to ? ` → ${updateJob.to}` : ""}`;
+      const body = `  ${mark} ${updateJob.detail}${updateJob.running ? ` · ${elapsed}s` : ""}`;
+      lines.push({ key: "uph", node: <Text color={theme.accent}>{title}</Text>, text: title, messageIndex: -1 });
+      lines.push({
+        key: "upb",
+        node: (
+          <Text dimColor>
+            {`  ${mark} `}
+            {updateJob.detail}
+            {updateJob.running ? ` · ${elapsed}s` : ""}
+          </Text>
+        ),
+        text: body,
+        messageIndex: -1,
+      });
+    }
     return lines;
-  }, [completed, columns, streaming, asides, ab, subagents]);
+  }, [completed, columns, streaming, asides, ab, subagents, updateJob, blink]);
   const chatBudget = Math.max(
     rows -
       CHAT_RESERVED_ROWS -

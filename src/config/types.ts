@@ -41,6 +41,12 @@ export interface Config {
   checkpointLimit?: number;
   /** UI colorway name; see /theme in chat or `config set theme`. */
   theme?: string;
+  /**
+   * How much of each tool call the transcript shows. Default "quiet" (one line
+   * per call and result); "normal" also shows the full arguments, "verbose" the
+   * whole result body. Switchable live with /verbose.
+   */
+  verbosity?: "quiet" | "normal" | "verbose";
   /** Saved provider profiles, switchable with /profile or `bajajbot profile use`. */
   profiles?: Record<string, Profile>;
   /**

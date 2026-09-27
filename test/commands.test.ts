@@ -8,6 +8,9 @@ test("filterCommands matches command prefixes", () => {
     "/btw",
     "/compare",
     "/subagent",
+    "/reload",
+    "/verbose",
+    "/update",
     "/fallback",
     "/route",
     "/ollama",
@@ -41,7 +44,10 @@ test("filterCommands matches command prefixes", () => {
   assert.deepEqual(filterCommands("/co").map((command) => command.name), ["/compare", "/copy", "/commit"]);
   assert.deepEqual(filterCommands("/su").map((command) => command.name), ["/subagent"]);
   assert.deepEqual(filterCommands("/subagent explore").length, 0);
-  assert.deepEqual(filterCommands("/re").map((command) => command.name), ["/retry"]);
+  assert.deepEqual(filterCommands("/re").map((command) => command.name), ["/reload", "/retry"]);
+  assert.deepEqual(filterCommands("/rel").map((command) => command.name), ["/reload"]);
+  assert.deepEqual(filterCommands("/v").map((command) => command.name), ["/verbose"]);
+  assert.deepEqual(filterCommands("/up").map((command) => command.name), ["/update"]);
   assert.deepEqual(filterCommands("/un").map((command) => command.name), ["/undo"]);
   assert.deepEqual(filterCommands("/sea").map((command) => command.name), ["/search"]);
   assert.deepEqual(filterCommands("/mo").map((command) => command.name), ["/model"]);
